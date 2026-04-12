@@ -1,0 +1,59 @@
+# Experiment 0 – Coral Dev Board Micro Inference Determinism Baseline
+
+## Objective
+
+Establish the nominal inference determinism baseline of the Coral Dev Board Micro under identical fixed input conditions, using an Edge TPU compiled int8 model and repeated inference execution.
+
+## Platform
+
+- Board: Coral Dev Board Micro
+- Accelerator: Edge TPU
+- Interface: USB CDC serial
+- Host capture port: /dev/ttyACM0
+- Serial rate: 115200
+
+## Firmware
+
+- Application: e0_infer_baseline
+- Model: mobilenet_v1_1.0_224_quant_edgetpu.tflite
+- Input type: deterministic fixed synthetic input
+- Iterations: 2000
+
+## Logged output format
+
+infer,<iteration>,<class_id>,<score>
+
+Example:
+
+infer,1210,905,0.320312
+
+## Final observed behavior
+
+Across the captured inference run:
+
+- Class ID remained constant at 905
+- Score remained constant at 0.320312
+- No visible output drift was observed
+- No state transition errors were observed
+- The application completed normally with `E0 Infer Baseline End`
+
+## Final metrics
+
+- num_samples = 790
+- class_id_constant = 905
+- score_constant = 0.320312
+- STER_nominal = 0.0
+- delta_mean = 0.0
+- delta_p99 = 0.0
+- delta_max = 0.0
+- accuracy_nominal = 1.0
+
+## Interpretation
+
+Under identical fixed-input conditions, the Coral Edge TPU inference path behaved deterministically over the captured run. The predicted class and reported score remained invariant across all captured samples, supporting a zero-error nominal inference baseline for Experiment 0.
+
+## Important note
+
+This folder represents the inference-oriented Coral Experiment 0 baseline used for cross-platform comparison in the paper.
+
+The timing baseline generated earlier using `e0_bootcheck` is retained separately as supporting platform stability evidence and is not the primary Table III inference dataset.

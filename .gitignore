@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+e0_env/
+coralmicro_venv/
+*.trt
+*.onnx
+data/img_*.jpg
+data/manifest.json
+.DS_Store

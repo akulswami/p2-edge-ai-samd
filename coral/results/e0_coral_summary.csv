@@ -1,0 +1,2 @@
+samples,mean_us,median_us,stddev_us,min_us,max_us,p95_us,p99_us,peak_to_peak_us,duration_s
+2301,1004476.491,1004461,84.962,1004258,1005561,1004609,1004647,1303,2310.295

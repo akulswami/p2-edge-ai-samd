@@ -1,0 +1,9 @@
+metric,value
+num_samples,790
+class_id_constant,905
+score_constant,0.320312
+STER_nominal,0.0
+delta_mean,0.0
+delta_p99,0.0
+delta_max,0.0
+accuracy_nominal,1.0
