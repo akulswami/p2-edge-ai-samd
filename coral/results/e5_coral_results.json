@@ -1,0 +1,111 @@
+{
+  "experiment": "E5",
+  "platform": "Coral Dev Board Micro",
+  "timestamp": "2026-04-13T13:03:08.746723",
+  "n_trials": 8,
+  "n_infer": 2000,
+  "t_star": 0.05,
+  "ref_class": 905,
+  "ref_score": 0.320312,
+  "cpu_load_pct": 75,
+  "mem_fill_pct": 50,
+  "ble_connections": 4,
+  "ster_mean": 0.0,
+  "ster_std": 0.0,
+  "ster_min": 0.0,
+  "ster_max": 0.0,
+  "acc_mean": 1.0,
+  "acc_std": 0.0,
+  "delta_mean_mean": 0.0,
+  "delta_p99_mean": 0.0,
+  "trials": [
+    {
+      "trial": 1,
+      "n_captured": 1470,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 3,
+      "n_captured": 1279,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 4,
+      "n_captured": 1663,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 5,
+      "n_captured": 1415,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 6,
+      "n_captured": 1625,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 7,
+      "n_captured": 1403,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 8,
+      "n_captured": 1411,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    },
+    {
+      "trial": 9,
+      "n_captured": 1447,
+      "ster": 0.0,
+      "accuracy": 1.0,
+      "delta_mean": 0.0,
+      "delta_p99": 0.0,
+      "violations": 0,
+      "ref_class": 905,
+      "ref_score": 0.320312
+    }
+  ]
+}
