@@ -3,7 +3,7 @@
 **Target venue:** IEEE Embedded Systems Letters (ESL) — 4-page letter format  
 **arXiv / submission target:** May 20, 2026  
 **Repo:** github.com/akulswami/p2-edge-ai-samd  
-**Latest commit:** 747bf9a
+**Latest commit:** 732c0d8
 
 ---
 
@@ -19,9 +19,9 @@ This letter empirically characterizes inference output instability under resourc
 |---|---|---|
 | NVIDIA Jetson Orin Nano Super 8GB | GPU inference host | TensorRT FP16, 6-core Arm, shared LPDDR5 |
 | Coral Dev Board Micro + Env. Sensor Board | Dedicated TPU inference host | Edge TPU, TFLite int8, on-chip SRAM |
-| nRF52840 DK | BLE peripheral / network stressor | Cortex-M4, BLE 5.0 |
-| TI Bluetooth SensorTag | Second BLE data source | Patient-analog wearable stressor node |
-| GL-AX1800 WiFi 6 Router | RF environment control | 2.4 GHz / 5 GHz co-channel interference |
+| nRF52840 DK | BLE central / network stressor | Cortex-M4, BLE 5.0, 0/2/4/6 simultaneous connections |
+| nRF52840 USB Dongle | BLE peripheral target | Zephyr peripheral_hr firmware, advertises indefinitely |
+| GL-AX1800 WiFi 6 Router | RF environment control | 2.4 GHz co-channel interference |
 | Insignia Docking Station + 2× 320GB HDD | Disk I/O stressor | fio benchmark, sustained sequential writes |
 
 ---
@@ -34,7 +34,7 @@ This letter empirically characterizes inference output instability under resourc
 | **E1** | CPU contention | ✅ Complete | ✅ Complete | CPU isolated on both platforms — STER=0.0000 at all load levels |
 | **E2** | Memory pressure | ✅ Complete | ✅ Complete | Memory isolated on both platforms — STER=0.0000 at all fill levels |
 | **E3** | GPU co-tenancy (Jetson only) | ✅ Complete | N/A | GPU scheduler context isolation confirmed — STER=0.0000 at 0–4 co-tenants |
-| **E4** | Network I/O — BLE/WiFi (novel) | 🔲 Pending | 🔲 Pending | — |
+| **E4** | Network I/O — BLE/WiFi | ✅ Complete | ✅ Complete | STER=0.0000 both platforms; interrupt measurements confirm stressor was active |
 | **E5** | Combined realistic deployment load | 🔲 Pending | 🔲 Pending | — |
 
 ---
@@ -107,6 +107,45 @@ Coral: GPU co-tenancy is architecturally impossible on the Edge TPU — confirme
 
 ---
 
+### E4 — Network I/O: BLE/WiFi Stressor (Both Platforms Confirmed)
+
+**Jetson:** 10 trials × 500 inferences per BLE connection level. Fixed pre-captured baseline (500-inference mean softmax vector). nRF52840 DK acting as BLE central with 0/2/4/6 simultaneous connections. nRF52840 USB dongle as peripheral target. GL-AX1800 providing 2.4 GHz co-channel WiFi interference.
+
+**Coral:** 10 trials × ~1400 inferences per BLE connection level (nRST-triggered captures). Same nRF52840 DK stressor active during capture.
+
+**Stressor validation — host interrupt measurements (Jetson, rtl88x2ce IRQ, 60s window):**
+
+| BLE Conns | IRQ/min | IRQ/sec | vs. baseline |
+|---|---|---|---|
+| 0 (scan only) | 389 | 6.5 | — |
+| 2 | 642 | 10.7 | +65% |
+| 4 | 732 | 12.2 | +88% |
+| 6 | 699 | 11.7 | +80% |
+
+**Jetson results:**
+
+| BLE Conns | STER | δ_mean | δ_P99 |
+|---|---|---|---|
+| 0 | 0.0000 | 0.0156 | 0.0215 |
+| 2 | 0.0000 | 0.0156 | 0.0215 |
+| 4 | 0.0000 | 0.0156 | 0.0215 |
+| 6 | 0.0000 | 0.0156 | 0.0215 |
+
+**Coral results:**
+
+| BLE Conns | STER | δ | Trials |
+|---|---|---|---|
+| 0 | 0.0000 | 0.000000 | 9/10 |
+| 2 | 0.0000 | 0.000000 | 10/10 |
+| 4 | 0.0000 | 0.000000 | 10/10 |
+| 6 | 0.0000 | 0.000000 | 10/10 |
+
+**Finding:** BLE/WiFi network interrupt load does not elevate STER on either platform. Interrupt measurements confirm the stressor was real — host CPU interrupt rate increased by up to 88% over the scan-only baseline at peak connection load. Despite this, inference output statistics were invariant across all connection levels. The TensorRT FP16 pipeline on the Jetson is deterministic under interrupt load; the Edge TPU int8 pipeline on the Coral is unconditionally deterministic. **Network I/O isolation confirmed on both platforms.**
+
+Note: The Jetson inference pipeline exhibited full output determinism across all stressor levels (identical per-trial δ statistics). This is a property of the TensorRT FP16 execution engine on fixed input data, not an artifact of the experimental design. The fixed pre-captured baseline and confirmed interrupt activity rule out stressor absence as an explanation.
+
+---
+
 ## Repository Structure
 
 ```
@@ -117,36 +156,48 @@ p2-edge-ai-samd/
 │   ├── e2_jetson.py          E2 memory pressure experiment (stress-ng --vm)
 │   ├── e3_jetson.py          E3 GPU co-tenancy experiment
 │   ├── e3_worker.py          E3 continuous inference worker (co-tenant stressor)
+│   ├── e4_jetson.py          E4 BLE/WiFi network stressor experiment
 │   ├── data/
 │   │   └── prepare_dataset.py
 │   └── results/
-│       ├── e0_jetson.csv     E0 results (10 trials × 500 inferences)
-│       ├── e1_jetson.csv     E1 results (10 trials × 500 inferences × 5 load levels)
-│       ├── e1_run.log        Full E1 run log
-│       ├── e2_jetson.csv     E2 results (5 trials × 500 inferences × 4 fill levels)
-│       └── e3_jetson.csv     E3 results (5 trials × 500 inferences × 5 co-tenant levels)
+│       ├── e0_jetson.csv               E0 results (10 trials × 500 inferences)
+│       ├── e1_jetson.csv               E1 results (10 trials × 500 inferences × 5 load levels)
+│       ├── e1_run.log                  Full E1 run log
+│       ├── e2_jetson.csv               E2 results (5 trials × 500 inferences × 4 fill levels)
+│       ├── e3_jetson.csv               E3 results (5 trials × 500 inferences × 5 co-tenant levels)
+│       ├── e4_jetson_conns0.csv        E4 results — 0 BLE connections (10 trials × 500 inferences)
+│       ├── e4_jetson_conns2.csv        E4 results — 2 BLE connections
+│       ├── e4_jetson_conns4.csv        E4 results — 4 BLE connections
+│       └── e4_jetson_conns6.csv        E4 results — 6 BLE connections
 ├── coral/
-│   ├── coral_capture.py      Shared serial capture + analysis utility (E1/E2)
-│   ├── e0_infer_baseline/    E0 Edge TPU firmware (MobileNetV1 int8)
-│   │   ├── e0_infer_baseline.cc
-│   │   └── analyze_e0_coral_infer.py
-│   ├── e1_cpu_stress/        E1 CPU contention experiment (Coral)
-│   │   ├── e1_coral.py
-│   │   └── results/
-│   │       └── e1_coral.csv  E1 results (5 trials × ~1970 inferences × 5 load levels)
-│   ├── e2_mem_pressure/      E2 memory pressure experiment (Coral)
-│   │   ├── e2_coral.py
-│   │   └── results/
-│   │       └── e2_coral.csv  E2 results (5 trials × 2000 inferences × 4 fill levels)
-│   ├── supporting_timing_baseline/
+│   ├── coral_capture.py               Shared serial capture + analysis utility
+│   ├── e0_infer_baseline/             E0 Edge TPU firmware (MobileNetV1 int8)
+│   ├── e4_coral.py                    E4 BLE/WiFi network stressor experiment (Coral)
 │   └── results/
 │       ├── e0_coral_infer_summary.csv
-│       └── e0_infer_log.txt
+│       ├── e0_infer_log.txt
+│       ├── e4_coral_conns0.csv        E4 results — 0 BLE connections (9/10 trials)
+│       ├── e4_coral_conns2.csv        E4 results — 2 BLE connections (10/10 trials)
+│       ├── e4_coral_conns4.csv        E4 results — 4 BLE connections (10/10 trials)
+│       └── e4_coral_conns6.csv        E4 results — 6 BLE connections (10/10 trials)
+├── e4_experiment/
+│   └── firmware/
+│       ├── e4_ble_central/            Zephyr BLE central firmware (nRF52840 DK)
+│       │   ├── src/main.c
+│       │   ├── CMakeLists.txt
+│       │   ├── prj.conf
+│       │   └── Kconfig
+│       └── hex/
+│           ├── e4_conns0.hex          Pre-built hex — 0 target connections
+│           ├── e4_conns2.hex          Pre-built hex — 2 target connections
+│           ├── e4_conns4.hex          Pre-built hex — 4 target connections
+│           ├── e4_conns6.hex          Pre-built hex — 6 target connections
+│           └── peripheral_dongle.zip  DFU package for nRF52840 dongle peripheral
 └── paper/
-    ├── P2_IEEE_ESL_Draft.docx             Original draft
-    ├── P2_IEEE_ESL_Draft_E1.docx          Updated with E1 results
-    ├── P2_IEEE_ESL_Draft_E2E3.docx        Updated with E2+E3 results
-    └── P2_IEEE_ESL_Draft_CoralE1E2.docx   Updated with Coral E1+E2 results
+    ├── P2_IEEE_ESL_Draft.docx                Original draft
+    ├── P2_IEEE_ESL_Draft_E0_updated.docx     Updated with E0 results
+    ├── P2_IEEE_ESL_Draft_E2E3.docx           Updated with E2+E3 results
+    └── P2_IEEE_ESL_Draft_CoralE1E2.docx      Updated with Coral E1+E2 results
 ```
 
 ---
@@ -159,11 +210,11 @@ p2-edge-ai-samd/
 
 where `δᵢ = ‖σ(yᵢ) − σ(ȳ)‖∞` and T* = 0.05 is derived conservatively from ISO 14971 Table B.1 risk control examples.
 
-E0–E3: STER = 0.0000 on both platforms across all stressor conditions tested. ✅ Confirmed.
+E0–E4: STER = 0.0000 on both platforms across all stressor conditions tested. ✅ Confirmed.
 
 ---
 
-## Architectural Summary (E0–E3)
+## Architectural Summary (E0–E4)
 
 All disturbance pathways tested so far have been ruled out on both platforms:
 
@@ -172,8 +223,20 @@ All disturbance pathways tested so far have been ruled out on both platforms:
 | CPU contention (E1) | GPU pipeline has no CPU dependency | Dedicated on-chip SRAM, separate memory controller | None on both |
 | Memory pressure (E2) | GPU DMA path has dedicated QoS lane | TPU SRAM separate from host DDR | None on both |
 | GPU co-tenancy (E3) | GPU scheduler provides context isolation | Architecturally impossible on Edge TPU | None (Jetson only) |
+| Network I/O — BLE/WiFi (E4) | TensorRT FP16 deterministic under interrupt load (+88% IRQ confirmed) | Edge TPU int8 unconditionally deterministic | None on both |
 
-**Remaining candidate disturbance pathways: network interrupt load (E4) and combined realistic load (E5).** BLE interrupt processing occurs on the host CPU regardless of GPU/TPU isolation, making E4 the first experiment with a plausible disturbance path to both platforms.
+**Remaining candidate disturbance pathway: combined realistic deployment load (E5).** E5 combines CPU, memory, disk I/O, and network stressors simultaneously to simulate a production deployment environment.
+
+---
+
+## nRF52840 DK Setup (E4)
+
+- **Toolchain:** nRF Connect SDK v2.6.1 (Zephyr), arm-zephyr-eabi 0.16.8, nrfjprog 10.24.2
+- **Firmware:** Custom Zephyr BLE central — scans and maintains N simultaneous connections with periodic GATT reads
+- **Build:** `west build -b nrf52840dk_nrf52840 e4_experiment/firmware/e4_ble_central -- -DCONFIG_E4_TARGET_CONNS=<N>`
+- **Flash:** `nrfjprog --program hex/e4_conns<N>.hex --sectoranduicrerase --verify -f NRF52`
+- **Peripheral:** nRF52840 USB dongle running Zephyr `peripheral_hr` sample, flashed via `nrfutil dfu usb-serial`
+- **JLink fix required:** `sudo ln -sf /opt/SEGGER/JLink/libjlinkarm.so.7.94.5 /opt/SEGGER/JLink/libjlinkarm.so.7`
 
 ---
 
@@ -184,19 +247,21 @@ All disturbance pathways tested so far have been ruled out on both platforms:
 - Python venv: `~/e0_env` — activate: `source ~/e0_env/bin/activate`
 - Model: `~/e0_experiment/models/mobilenetv2_fp16.trt`
 - Dataset: 500 Tiny ImageNet images, manifest at `~/e0_experiment/data/manifest.json`
+- E4 baseline: `~/e4_experiment/e4_baseline.npy` (500-inference mean softmax, pre-captured)
 - IP: 192.168.8.102
 
 ### Coral Dev Board Micro
 - coralmicro SDK in `~/coralmicro/`
-- Connected via USB-C → `/dev/ttyACM0`
+- Connected via USB-C → `/dev/ttyACM2` (when nRF DK also connected)
 - Serial capture: `coral_capture.py` (pyserial, handles nRST USB disconnect/reconnect)
-- udev rule: `/etc/udev/rules.d/99-coral.rules` — prevents ModemManager from grabbing port on reconnect
+- udev rule: `/etc/udev/rules.d/99-coral.rules` — prevents ModemManager from grabbing port
 
 ### Stress tooling
 - `stress-ng` 0.13.12 installed on both Jetson and Ubuntu host
 - E1 CPU: `--cpu 0 --cpu-load <pct>` (uses all available cores at target %)
-- E2 VM fill: 25/50/75/90% of total RAM — Jetson 8192 MB, Ubuntu host auto-detected at runtime
+- E2 VM fill: 25/50/75/90% of total RAM
 - E3 co-tenant workers: independent pycuda + TensorRT contexts, 100-image loop, no pacing
+- E4 BLE: nRF52840 DK central, 0/2/4/6 connections, 500ms GATT read interval
 
 ---
 
@@ -204,7 +269,7 @@ All disturbance pathways tested so far have been ruled out on both platforms:
 
 **Jetson:** JetPack 6.x, CUDA 12.6, TensorRT 10.3.0, cuDNN 9.3.0, Python 3.10, pycuda, Pillow, numpy, stress-ng
 
-**Coral host (Ubuntu):** Python 3.10, pyserial, numpy, stress-ng. coralmicro SDK for firmware builds.
+**Coral host (Ubuntu):** Python 3.10, pyserial, numpy, stress-ng, nrfjprog 10.24.2, nrfutil 6.1.7, west 1.5.0, nRF Connect SDK v2.6.1
 
 ---
 
