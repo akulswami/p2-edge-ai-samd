@@ -1,18 +1,19 @@
 # P2 — Runtime Inference Stability Under Resource Contention in Edge AI Medical Devices
 
 **Target venue:** IEEE Embedded Systems Letters (ESL) — 4-page letter format  
-**arXiv / submission target:** May 20, 2026  
+**Submission target:** May 20, 2026  
 **Repo:** github.com/akulswami/p2-edge-ai-samd  
-**Latest commit:** 918ffe7  
-**Paper status:** Draft complete — E0–E5 confirmed, all placeholders filled, IEEE ESL compliance review completed
+**Paper status:** E0–E6 complete on all three execution paths — narrative reframe in progress for ESL submission
 
 ---
 
 ## Paper Summary
 
-This letter empirically characterizes inference output stability under resource contention on two architecturally distinct edge AI platforms — the NVIDIA Jetson Orin Nano Super (TensorRT FP16, shared LPDDR5) and the Coral Dev Board Micro (Edge TPU int8, dedicated on-chip SRAM) — introducing the Safety-Threshold Exceedance Rate (STER) as a candidate pre-market verification metric for FDA-regulated Software as a Medical Device (SaMD).
+This letter empirically characterizes inference output stability and timing stability under resource contention across three execution paths: the NVIDIA Jetson Orin Nano Super (TensorRT FP16), the Coral Dev Board Micro (Edge TPU int8), and a general-purpose CPU baseline (ONNX Runtime FP32 on the same Jetson hardware). It introduces the Safety-Threshold Exceedance Rate (STER) as a formally-defined robustness verification metric for FDA-regulated Software as a Medical Device (SaMD).
 
-**Central finding:** Both platforms achieve STER = 0.0000 with zero exceedances across approximately 158,000 inference activations under five stressor classes, including combined realistic deployment load. Accuracy-based metrics are structurally insensitive to these conditions (Δaccuracy < 1.0%), confirming they cannot substitute for STER in stability characterization. These results provide the first empirical evidence that dedicated inference accelerator architectures may inherently satisfy STER-based pre-market criteria.
+**Central finding:** All three execution paths achieve STER = 0.0000 with zero output exceedances across approximately 208,000 inference activations under five stressor classes. The CPU-only negative control (E6) is the critical distinguishing result: it preserves output stability (STER = 0.0000, δ = 0.0000) but exhibits 7.2× latency degradation under combined load (14.5 ms → 104.0 ms), with P99 latency reaching 165.1 ms — exceeding the 10 Hz clinical cycle budget by 65%. This establishes that dedicated inference accelerators contribute **timing isolation** as a distinct safety property that output stability metrics alone cannot capture.
+
+**Contribution framing (post-review reframe):** The paper is a robustness validation and characterization paper, not a failure-detection paper. STER = 0.0000 confirms that modern dedicated edge AI accelerators pass the metric under realistic contention. The CPU negative control demonstrates what breaks when the accelerator is removed — timing stability — and establishes the boundary of STER's coverage.
 
 **Regulatory anchor:** FDA Draft Guidance FDA-2024-D-4488 (January 2025) requires robustness assessment for reasonably foreseeable conditions of use. STER is proposed as a candidate empirical method for operationalizing that requirement.
 
@@ -26,9 +27,11 @@ This letter empirically characterizes inference output stability under resource 
 STER = (1/N) · Σᵢ 𝟙[δᵢ > T*]
 ```
 
-where `δᵢ = ‖σ(yᵢ) − σ(ȳ)‖∞` is the L-infinity norm on the softmax probability vector vs. the nominal mean baseline, and `T* = 0.05` (±5% relative deviation, conservative relative to ISO 14971 Table B.1).
+where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm on the softmax probability vector vs. the per-image zero-load reference, and `T* = 0.05` (±5% relative deviation, conservative relative to ISO 14971 Table B.1).
 
-**Coral platform note:** The Edge TPU produces deterministic int8 outputs (δ = 0.0000 exactly). STER on Coral is additionally characterized via scalar score deviation `Δscoreᵢ = |scoreᵢ − score_ref|` with `REF_CLASS = 905`, `REF_SCORE = 0.320312`.
+**δ definition note:** δ is computed per-image against a reference softmax captured at zero load for that same image. This is consistent across E0/E2/E3/E6. E1 uses consecutive-frame L-inf (equivalent for deterministic hardware — confirmed empirically: δ_mean identical at all load levels). E4/E5 use a mean baseline (slightly different scale, ~0.0156 vs ~0.0181); STER conclusion identical (zero exceedances) across all definitions.
+
+**Coral platform note:** The Edge TPU produces deterministic int8 outputs (δ = 0.0000 exactly). STER on Coral is characterized via class identity stability: `STER = fraction of inferences where top-1 class ≠ REF_CLASS`. `REF_CLASS = 905`, `REF_SCORE = 0.320312`.
 
 ---
 
@@ -36,7 +39,8 @@ where `δᵢ = ‖σ(yᵢ) − σ(ȳ)‖∞` is the L-infinity norm on the softm
 
 | Platform | Role | Key Specification |
 |---|---|---|
-| NVIDIA Jetson Orin Nano Super 8GB | Primary GPU inference host | 1024-core Ampere GPU, 67 TOPS, shared LPDDR5, TensorRT FP16 |
+| NVIDIA Jetson Orin Nano Super 8GB | GPU inference host | 1024-core Ampere GPU, 67 TOPS, shared LPDDR5, TensorRT FP16 |
+| NVIDIA Jetson Orin Nano Super 8GB | CPU negative control | Same hardware, ONNX Runtime FP32, CPUExecutionProvider (no GPU) |
 | Coral Dev Board Micro + Env. Sensor Board | Dedicated TPU inference host | Google Edge TPU, 4 TOPS, on-chip SRAM, TFLite int8 |
 | nRF52840 DK | BLE peripheral / network stressor | Cortex-M4, BLE 5.0, multi-connection central |
 | TI Bluetooth SensorTag | Second BLE data source | Patient-analog wearable stressor node |
@@ -47,17 +51,18 @@ where `δᵢ = ‖σ(yᵢ) − σ(ȳ)‖∞` is the L-infinity norm on the softm
 
 ## Experiment Status
 
-| ID | Stressor | Jetson | Coral | STER Result |
-|---|---|---|---|---|
-| **E0** | Baseline (zero load) | ✅ Complete | ✅ Complete | 0.0000 both platforms |
-| **E1** | CPU contention (0–100%) | ✅ Complete | ✅ Complete | 0.0000 both platforms |
-| **E2** | Memory pressure (25–90% fill) | ✅ Complete | ✅ Complete | 0.0000 both platforms |
-| **E3** | GPU co-tenancy (0–4 workers) | ✅ Complete | N/A (architectural) | 0.0000 Jetson; N/A Coral |
-| **E4** | Network I/O — BLE/WiFi (novel) | ✅ Complete | ✅ Complete | 0.0000 both platforms |
-| **E5** | Combined realistic deployment load | ✅ Complete | ✅ Complete | 0.0000 both platforms |
+| ID | Stressor | Jetson GPU | Coral | Jetson CPU (E6) | STER Result |
+|---|---|---|---|---|---|
+| **E0** | Baseline (zero load) | ✅ Complete | ✅ Complete | ✅ Complete | 0.0000 all paths |
+| **E1** | CPU contention (0–100%) | ✅ Complete | ✅ Complete | ✅ Complete | 0.0000 all paths |
+| **E2** | Memory pressure (25–90%) | ✅ Complete | ✅ Complete | — | 0.0000 both platforms |
+| **E3** | GPU co-tenancy (0–4 workers) | ✅ Complete | N/A (architectural) | N/A | 0.0000 Jetson |
+| **E4** | Network I/O — BLE/WiFi | ✅ Complete | ✅ Complete | — | 0.0000 both platforms |
+| **E5** | Combined realistic load | ✅ Complete | ✅ Complete | ✅ Complete | 0.0000 all paths |
+| **E6** | CPU-only negative control | — | — | ✅ Complete | 0.0000 STER; 7.2× latency degradation |
 
-**Total inference activations:** ~158,000 across all experiments and both platforms.  
-**STER exceedances:** Zero across all conditions.
+**Total inference activations:** ~208,000 across all experiments and all execution paths.  
+**STER exceedances:** Zero across all conditions on all paths.
 
 ---
 
@@ -65,74 +70,41 @@ where `δᵢ = ‖σ(yᵢ) − σ(ȳ)‖∞` is the L-infinity norm on the softm
 
 ### E0 — Baseline Calibration
 
-| Platform | STER_nominal | Acc_nominal | δ_mean | δ_P99 |
+| Platform | STER_nominal | δ_mean | δ_P99 | Latency_mean |
 |---|---|---|---|---|
-| Jetson Orin Nano Super | 0.0000 | 1.60%* | 0.0181 | 0.0233 |
-| Coral Dev Board Micro | 0.0000 | 100.00%† | 0.0000 | 0.0000 |
-
-\* Jetson Acc reflects Tiny ImageNet label remapping, not a benchmark claim.  
-† Coral uses deterministic synthetic input — 100% reflects hardware determinism.
+| Jetson GPU (TensorRT FP16) | 0.0000 | 0.0181 | 0.0233 | ~15 ms |
+| Coral Edge TPU (int8) | 0.0000 | 0.0000 | 0.0000 | — |
+| Jetson CPU (ONNX FP32) | 0.0000 | 0.0000 | 0.0000 | 14.5 ms |
 
 ### E1 — CPU Contention
 
-| CPU Load | Jetson STER | Jetson Acc | Coral STER | Coral Acc |
+| CPU Load | Jetson GPU STER | Coral STER | Jetson CPU STER | Jetson CPU Latency |
 |---|---|---|---|---|
-| 25% | 0.0000 | 1.42% | 0.0000 | 0.0000 |
-| 50% | 0.0000 | 1.70% | 0.0000 | 0.0000 |
-| 75% | 0.0000 | 1.54% | 0.0000 | 0.0000 |
-| 100% | 0.0000 | 1.40% | 0.0000 | 0.0000 |
-
-Jetson GPU executes entirely on GPU — no architectural path for CPU load to disturb inference. Coral Edge TPU isolated by dedicated on-chip SRAM.
-
-### E2 — Memory Pressure
-
-| RAM Fill | Jetson STER | Jetson Acc | Coral STER | Coral Acc | Sig. |
-|---|---|---|---|---|---|
-| 25% | 0.0000 | 1.44% | 0.0000 | 1.56% | No |
-| 50% | 0.0000 | 1.40% | 0.0000 | 1.64% | No |
-| 75% | 0.0000 | 1.54% | 0.0000 | 0.0000 | No |
-| 90% | 0.0000 | 1.48% | 0.0000 | 0.0000 | No |
-
-TensorRT allocations via GPU DMA path isolated from host DDR. Edge TPU SRAM architecturally separate from host DDR.
-
-### E3 — GPU Co-tenancy (Jetson Only)
-
-| Co-tenants | Jetson STER | Jetson Acc | STER Ratio | Sig. |
-|---|---|---|---|---|
-| 1 | 0.0000 | 1.60% | N/A | No |
-| 2 | 0.0000 | 1.40% | 1.00× | No |
-| 3 | 0.0000 | 1.64% | 1.00× | No |
-| 4 | 0.0000 | 1.60% | 1.00× | No |
-
-GPU co-tenancy architecturally impossible on Coral Edge TPU — confirmed absolute isolation property.
-
-### E4 — Network I/O (Novel Stressor Class)
-
-| BLE Connections | Jetson STER | Jetson Acc | Coral STER | Coral Acc | WiFi Compound? |
-|---|---|---|---|---|---|
-| 0 | 0.0000 | 1.64% | 0.0000 | +0.04% | No |
-| 2 | 0.0000 | 1.64% | 0.0000 | 100.00% | No |
-| 4 | 0.0000 | 1.64% | 0.0000 | 100.00% | No |
-| 6 | 0.0000 | 1.64% | 0.0000 | 100.00% | No |
-
-IRQ rate confirmed elevated (+88% at 4 connections). GPU pipeline isolated from network interrupt pathway. BLE managed by nRF52840 DK (e4_conns4.hex firmware).
+| 25% | 0.0000 | 0.0000 | 0.0000 | 33.4 ms |
+| 50% | 0.0000 | 0.0000 | 0.0000 | 57.8 ms |
+| 75% | 0.0000 | 0.0000 | 0.0000 | 73.7 ms |
+| 100% | 0.0000 | 0.0000 | 0.0000 | 70.9 ms |
 
 ### E5 — Combined Realistic Deployment Load
 
-**Stressor protocol:** CPU 75% (stress-ng) + Memory 50% fill (stress-ng --vm) + BLE 4 connections (nRF52840 DK) + Disk fio sequential write (USB HDD)
+| Platform | STER | δ_mean | Latency_mean | Latency_P99 |
+|---|---|---|---|---|
+| Jetson GPU | 0.0000 | 0.0156 | ~15 ms | — |
+| Coral | 0.0000 | 0.0000 | — | — |
+| Jetson CPU | 0.0000 | 0.0000 | 104.0 ms | 165.1 ms ⚠️ |
 
-| Platform | STER_combined | Acc_combined | δ_mean | δ_P99 | STER vs. worst single |
+⚠️ CPU combined latency P99 = 165.1 ms exceeds 10 Hz cycle budget (100 ms) by 65%. STER = 0.0000 but timing fails — the key negative control finding.
+
+### E6 — CPU-Only Full Summary
+
+| Condition | STER | δ_mean | δ_max | Latency_mean | Latency_P99 |
 |---|---|---|---|---|---|
-| Jetson Orin Nano Super | 0.0000 | 1.52% | 0.0156 | 0.0214 | 1.00× (E1–E4) |
-| Coral Dev Board Micro | 0.0000 | 100.00% | 0.0000 | 0.0000 | 1.00× (E4) |
-
-10 trials × 500 inferences (Jetson). 10 trials × ~1452 inferences captured (Coral, mean n_captured from serial). Additive stressor independence confirmed — combined load produces no degradation beyond any individual stressor.
-
----
-
-## Inference Pipeline
-
-Both platforms execute MobileNetV2 (224×224 RGB, ImageNet 1000-class head) at a nominal rate of 10 Hz (T_n = 100 ms). Jetson runs TensorRT FP16; Coral runs TFLite int8 compiled for Edge TPU. Fixed test set: 500 Tiny ImageNet images (Jetson) / deterministic synthetic input (Coral). Baseline: mean softmax vector across 500 images, captured under E0 nominal conditions.
+| Zero load | 0.0000 | 0.0000 | 0.0000 | 14.5 ms | 18.6 ms |
+| CPU 25% | 0.0000 | 0.0000 | 0.0000 | 33.4 ms | 111.4 ms |
+| CPU 50% | 0.0000 | 0.0000 | 0.0000 | 57.8 ms | 115.8 ms |
+| CPU 75% | 0.0000 | 0.0000 | 0.0000 | 73.7 ms | 122.1 ms |
+| CPU 100% | 0.0000 | 0.0000 | 0.0000 | 70.9 ms | 117.0 ms |
+| Combined | 0.0000 | 0.0000 | 0.0000 | 104.0 ms | 165.1 ms |
 
 ---
 
@@ -141,34 +113,36 @@ Both platforms execute MobileNetV2 (224×224 RGB, ImageNet 1000-class head) at a
 ```
 p2-edge-ai-samd/
 ├── jetson/
-│   ├── e0_jetson.py            E0 baseline inference
-│   ├── e1_jetson.py            E1 CPU stress experiment
-│   ├── e2_jetson.py            E2 memory pressure experiment
-│   ├── e3_jetson.py            E3 GPU co-tenancy experiment
-│   ├── e3_worker.py            E3 co-tenant worker process
-│   ├── e4_jetson.py            E4 network I/O experiment
-│   ├── e5_jetson.py            E5 combined load experiment
+│   ├── e0_jetson.py              E0 baseline inference (TensorRT FP16)
+│   ├── e1_jetson.py              E1 CPU stress (TensorRT FP16)
+│   ├── e2_jetson.py              E2 memory pressure (TensorRT FP16)
+│   ├── e3_jetson.py              E3 GPU co-tenancy
+│   ├── e3_worker.py              E3 co-tenant worker process
+│   ├── e4_jetson.py              E4 network I/O (TensorRT FP16)
+│   ├── e5_jetson.py              E5 combined load (TensorRT FP16)
+│   ├── e6_jetson_cpu.py          E6 CPU-only negative control (ONNX FP32) ← NEW
 │   └── results/
 │       ├── e0_jetson.csv
 │       ├── e1_jetson.csv
 │       ├── e2_jetson.csv
 │       ├── e3_jetson.csv
 │       ├── e4_jetson_conns{0,2,4,6}.csv
-│       └── e5_results_summary.json
+│       ├── e5_results_summary.json
+│       └── e6_results_summary.json         ← NEW
 ├── coral/
-│   ├── e0_infer_baseline/      E0 firmware (MobileNetV1 int8, 2000 inferences)
-│   ├── e1_coral.py             E1 Coral experiment script
-│   ├── e2_coral.py             E2 Coral experiment script
-│   ├── e4_coral.py             E4 Coral experiment script
-│   ├── e5_coral.py             E5 Coral experiment script
+│   ├── coral_capture.py          Shared serial capture utility
+│   ├── e0_infer_baseline/        E0 firmware (MobileNetV1 int8, 2000 inferences)
+│   ├── e1_coral.py
+│   ├── e2_coral.py
+│   ├── e4_coral.py
+│   ├── e5_coral.py
 │   └── results/
-│       ├── e0_coral_summary.csv
 │       ├── e1_coral.csv
 │       ├── e2_coral.csv
 │       ├── e4_coral_conns{0,2,4,6}.csv
 │       └── e5_coral_results.json
 └── paper/
-    └── P2_IEEE_ESL_Draft_E5.docx   Current paper draft (all E0–E5 filled)
+    └── P2_IEEE_ESL_Draft_E6.docx    Current draft (E0–E6, reframe in progress) ← NEW
 ```
 
 ---
@@ -179,15 +153,15 @@ p2-edge-ai-samd/
 - **User:** akulswami
 - **OS:** JetPack 6 (R36.4.4), CUDA 12.6, TensorRT 10.3.0
 - **Venv:** `~/e0_env` → `source ~/e0_env/bin/activate`
-- **Model:** `~/e0_experiment/models/mobilenetv2_fp16.trt`
+- **GPU model:** `~/e0_experiment/models/mobilenetv2_fp16.trt`
+- **CPU model:** `~/e6_experiment/models/mobilenetv2_cpu.onnx` (MobileNetV2 FP32)
 - **Dataset:** 500 Tiny ImageNet images, manifest at `~/e0_experiment/data/manifest.json`
-- **E4 baseline:** `~/e4_experiment/e4_baseline.npy` (mean softmax, shape (1000,))
-- **Inference pattern:** pycuda + TensorRT FP16, cycle-paced to T_NOMINAL=0.100s
+- **E6 reference:** `~/e6_experiment/e6_cpu_reference.npy` (500×1000 per-image softmax at zero load)
 
 Key script notes:
 - Manifest is plain JSON list — use `manifest[:N_INFER]`, not `manifest['images']`
 - Image paths are absolute — use `e['path']` directly
-- Baseline shape is `(1000,)` — global mean softmax vector, not per-image
+- E6 δ uses per-image reference (correct); E4/E5 use mean baseline (different scale, identical STER)
 
 ---
 
@@ -195,10 +169,10 @@ Key script notes:
 
 - **Connection:** Ubuntu via USB-C → `/dev/ttyACM2` (when nRF DK also connected)
 - **Firmware:** `e0_infer_baseline` (MobileNetV1 int8, 2000 inferences, synthetic input)
-- **Serial capture:** `~/e1_coral/coral_capture.py`
+- **Serial capture:** `coral/coral_capture.py`
 - **REF_CLASS:** 905, **REF_SCORE:** 0.320312
 - **Serial output format:** `infer,<iteration>,<class_id>,<score>`
-- **n_captured note:** E4/E5 capture ~1400 inferences per trial (firmware completes ~2000, serial buffer timing limits capture); STER=0.0000 confirmed across all captured inferences
+- **n_captured note:** E4/E5 capture ~1400 inferences per trial; STER = 0.0000 confirmed across all
 
 ---
 
@@ -220,44 +194,48 @@ Key script notes:
 
 ## Paper Status
 
-**Draft:** `paper/P2_IEEE_ESL_Draft_E5.docx`
+**Current draft:** `paper/P2_IEEE_ESL_Draft_E6.docx`
 
 | Section | Status |
 |---|---|
-| Abstract | ✅ Complete (~157 words, tight) |
-| Introduction | ✅ Complete — clinical anchor updated to Lee et al. JAMA 2025 |
+| Abstract | ✅ Updated — three execution paths, 208k activations, timing finding |
+| Introduction + Contributions | ✅ Updated — CPU negative control bullet added |
 | Related Work | ✅ Complete |
 | System Model (Sec. III) | ✅ Complete |
-| Hardware & Protocol (Sec. IV) | ✅ Complete |
-| Results E0–E4 (Sec. V.A–E) | ✅ Complete with real data |
-| Results E5 (Sec. V.F) | ✅ Complete with real data |
-| Summary Table IX | ✅ Complete — all rows filled |
-| Discussion (Sec. VI) | ✅ Complete — reframed for positive isolation finding |
-| Conclusion (Sec. VII) | ✅ Complete — all [X] placeholders removed |
-| Acknowledgements | ✅ Complete — AI disclosure + ORCID |
-| References [1]–[15] | ✅ Complete — all 15 references real and formatted |
+| Hardware & Protocol (Sec. IV) | ✅ Updated — three execution paths described |
+| Results E0–E5 (Sec. V.A–F) | ✅ Complete with real data |
+| Results E6 (Sec. V.F new) | ✅ Added — Table VIII-B + full narrative |
+| Summary Table IX | ✅ Complete |
+| Discussion (Sec. VI) | ✅ New Sec. VI.C — CPU negative control argument |
+| Conclusion (Sec. VII) | ✅ Updated — three platforms, timing finding |
+| Acknowledgements | ✅ Complete |
+| References [1]–[15] | ✅ Complete |
 
 **Remaining before May 20 submission:**
-1. Convert to IEEE two-column LaTeX format (IEEEtran) — hard 4-page limit requires ~40–50% content cut
-2. Submit PDF via IEEE Author Portal: ieee.atyponrex.com/journal/les-ieee
-3. Upload simultaneously to arXiv
-4. Cover letter arguing scope fit ("profiling/measurement of embedded inference accelerators")
+1. Narrative reframe: detection paper → validation/characterization paper (claim alignment)
+2. Scope cut for ESL: compress E2/E3, reduce regulatory framing
+3. Convert to IEEE two-column LaTeX (IEEEtran) — hard 4-page limit
+4. Submit PDF via IEEE Author Portal: ieee.atyponrex.com/journal/les-ieee
+5. Simultaneous arXiv upload
 
 ---
 
 ## Key Design Decisions
 
 **Why STER = 0.0000 is the finding, not a null result:**  
-Accuracy-based metrics also show no change (Δaccuracy < 1.0%), meaning accuracy-based pre-market testing would pass these devices — but cannot confirm that output deviation is within bounds. STER provides that confirmation. The finding establishes a positive safety baseline: current dedicated inference accelerator architectures may inherently satisfy STER-based pre-market criteria across all tested stressor classes.
+STER provides a formally-defined, reproducible confirmation that output deviation is within the T* = 0.05 bound under all tested conditions. Accuracy-based testing provides no such confirmation (Δaccuracy < 1.0%, insensitive to output distribution). The positive finding is: modern dedicated edge AI accelerators pass STER under realistic contention. The negative control (E6) establishes the boundary: STER passes even without a dedicated accelerator, but timing fails — defining what the accelerator actually contributes to the safety profile.
+
+**Why the CPU negative control (E6) is the strongest result:**  
+Running the same model on the same hardware without the GPU accelerator produces STER = 0.0000 but 7.2× latency degradation. This isolates the accelerator's contribution to timing stability (not numerical stability), sharpens the architectural safety claim, and demonstrates that STER alone is insufficient as a sole pre-market safety criterion.
 
 **Why MobileNetV2:**  
-Representative of the model complexity class deployed in FDA-authorized diagnostic SaMD (compact CNN, 3.4M parameters, production-proven on embedded hardware, used in multiple cleared devices).
+Representative of the model complexity class deployed in FDA-authorized diagnostic SaMD (compact CNN, 3.4M parameters, production-proven on embedded hardware).
 
 **Why T* = 0.05:**  
-Conservative relative to ISO 14971 Table B.1 risk control examples (typical clinical tolerance bands 10–20% for diagnostic classifiers). Ensures STER captures stability degradation unacceptable before reaching levels flagged by clinical validation protocols.
+Conservative relative to ISO 14971 Table B.1 risk control examples. Ensures STER captures stability degradation unacceptable before reaching levels flagged by clinical validation protocols.
 
 **Why the Coral uses synthetic input:**  
-The Edge TPU's deterministic int8 inference is unconditionally reproducible for fixed inputs. Using synthetic input isolates the hardware determinism property cleanly. δ = 0.0000 exactly across all trials and all stressor conditions.
+The Edge TPU's deterministic int8 inference is unconditionally reproducible for fixed inputs. δ = 0.0000 exactly across all trials and all stressor conditions.
 
 ---
 
@@ -267,8 +245,10 @@ The Edge TPU's deterministic int8 inference is unconditionally reproducible for 
 ```
 tensorrt==10.3.0
 pycuda
+onnxruntime
 Pillow
 numpy
+torchvision
 psutil
 ```
 
