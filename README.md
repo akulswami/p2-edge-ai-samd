@@ -24,7 +24,10 @@ This letter demonstrates, through a controlled same-hardware experiment, that ou
 ## Key Metric: STER
 
 **Safety-Threshold Exceedance Rate:**
+
+```
 STER = (1/N) · Σᵢ 𝟙[δᵢ > T*]
+```
 
 where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm on the softmax probability vector vs. the per-image zero-load reference, and `T* = 0.05`.
 
@@ -81,37 +84,86 @@ where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm o
 ---
 
 ## Repository Structure
+
+```
 p2-edge-ai-samd/
 ├── jetson/
-│   ├── e0_jetson.py              E0 baseline (TensorRT FP16)
+│   ├── data/
+│   │   └── prepare_dataset.py
+│   ├── e0_jetson.py              E0 baseline (TensorRT FP16, GPU path)
 │   ├── e1_jetson.py              E1 CPU stress (GPU path)
 │   ├── e2_jetson.py              E2 memory pressure (GPU path)
 │   ├── e3_jetson.py              E3 GPU co-tenancy
-│   ├── e3_worker.py              E3 co-tenant worker
+│   ├── e3_worker.py              E3 co-tenant worker process
 │   ├── e4_jetson.py              E4 network I/O (GPU path)
 │   ├── e5_jetson.py              E5 combined load (GPU path)
 │   ├── e6_jetson_cpu.py          E6 CPU-only negative control (ONNX FP32)
 │   └── results/
 │       ├── e0_jetson.csv
 │       ├── e1_jetson.csv
+│       ├── e1_run.log
 │       ├── e2_jetson.csv
 │       ├── e3_jetson.csv
-│       ├── e4_jetson_conns{0,2,4,6}.csv
+│       ├── e4_jetson_conns0.csv
+│       ├── e4_jetson_conns2.csv
+│       ├── e4_jetson_conns4.csv
+│       ├── e4_jetson_conns6.csv
 │       ├── e5_results_summary.json
 │       └── e6_results_summary.json
-├── coral/                        Preserved for P4
-└── paper/
-└── P2_IEEE_ESL_Draft_Pivot.docx    Current draft ← LATEST
+├── coral/                             Preserved for companion paper P4
+│   ├── coral_capture.py               Shared serial capture utility
+│   ├── e0_infer_baseline/             E0 firmware source (MobileNetV1 int8)
+│   │   ├── e0_infer_baseline.cc
+│   │   ├── CMakeLists_e0_infer_baseline.txt
+│   │   ├── analyze_e0_coral_infer.py
+│   │   └── Experiment0_Coral_Final.txt
+│   ├── e1_cpu_stress/
+│   │   ├── e1_coral.py
+│   │   └── results/
+│   │       └── e1_coral.csv
+│   ├── e2_mem_pressure/
+│   │   ├── e2_coral.py
+│   │   └── results/
+│   │       └── e2_coral.csv
+│   ├── e4_coral.py                    E4 BLE/WiFi stressor
+│   ├── e5_coral.py                    E5 combined load
+│   ├── supporting_timing_baseline/
+│   └── results/
+│       ├── e0_coral_summary.csv
+│       ├── e0_coral_infer_summary.csv
+│       ├── e0_infer_log.txt
+│       ├── e4_coral_conns0.csv
+│       ├── e4_coral_conns2.csv
+│       ├── e4_coral_conns4.csv
+│       ├── e4_coral_conns6.csv
+│       └── e5_coral_results.json
+├── paper/
+│   ├── P2_IEEE_ESL_Draft_E6.docx      Previous draft (pre-pivot)
+│   └── P2_IEEE_ESL_Draft_Pivot.docx   Current draft (pivot framing) ← LATEST
+└── README.md
+```
 
 ---
 
 ## Jetson Setup
 
 - **IP:** 192.168.8.102 | **User:** akulswami | **Venv:** `~/e0_env`
+- **OS:** JetPack 6 (R36.4.4), CUDA 12.6, TensorRT 10.3.0
 - **GPU model:** `~/e0_experiment/models/mobilenetv2_fp16.trt`
 - **CPU model:** `~/e6_experiment/models/mobilenetv2_cpu.onnx`
 - **Dataset:** 500 Tiny ImageNet images, `~/e0_experiment/data/manifest.json`
-- **E6 reference:** `~/e6_experiment/e6_cpu_reference.npy` (500×1000 per-image softmax)
+- **E6 reference:** `~/e6_experiment/e6_cpu_reference.npy` (500×1000 per-image softmax at zero load)
+
+---
+
+## BLE / nRF Setup
+
+- **nRF52840 DK** connected to Ubuntu via USB (E4/E5 stressor)
+- **JLink symlink fix:**
+  ```bash
+  sudo ln -sf /opt/SEGGER/JLink/libjlinkarm.so.7.94.5 /opt/SEGGER/JLink/libjlinkarm.so.7
+  ```
+- **E4/E5 firmware:** `e4_conns4.hex` — BLE central, 4 simultaneous connections
 
 ---
 
@@ -119,13 +171,55 @@ p2-edge-ai-samd/
 
 **Current draft:** `paper/P2_IEEE_ESL_Draft_Pivot.docx`
 
-All sections updated for pivot framing. Remaining: LaTeX conversion (IEEEtran, 4-page limit), submission via IEEE Author Portal, simultaneous arXiv upload.
+| Section | Status |
+|---|---|
+| Title | ✅ Architectural isolation framing |
+| Abstract | ✅ Controlled experiment, causal claim, joint STER+latency |
+| Introduction | ✅ Independence gap, controlled experiment as method |
+| Related Work | ✅ Complete |
+| System Model (Sec. III) | ✅ CPU/GPU architectural model, STER as output control |
+| Hardware & Protocol (Sec. IV) | ✅ Two-path same-hardware design, Coral removed |
+| Results E0–E5 GPU (Sec. V) | ✅ GPU path positive baseline |
+| Results E6 CPU (Sec. V) | ✅ Negative control, timing failure demonstrated |
+| Discussion (Sec. VI) | ✅ Causal isolation argument, joint STER+latency protocol |
+| Conclusion (Sec. VII) | ✅ Causal claim, joint protocol proposal |
+| References [1]–[14] | ✅ Complete (Coral ref removed) |
+
+**Remaining before May 20:**
+1. LaTeX conversion (IEEEtran, 4-page limit)
+2. Submit via IEEE Author Portal: ieee.atyponrex.com/journal/les-ieee
+3. Simultaneous arXiv upload
+4. Update six_research_papers_v2.docx P2 description
 
 ---
 
 ## Key Design Decision: Why Same-Hardware Design
 
 Cross-platform comparisons cannot establish causality because hardware differences confound the result. Running GPU and CPU paths on the same Jetson Orin Nano Super eliminates all hardware-level confounds. The 7.2× timing divergence under identical stressors is therefore causally attributable to the accelerator architecture — the methodological contribution that distinguishes this paper from prior benchmarking work.
+
+---
+
+## Dependencies
+
+**Jetson (Python 3.10, venv: `~/e0_env`):**
+```
+tensorrt==10.3.0
+pycuda
+onnxruntime
+Pillow
+numpy
+torchvision
+psutil
+```
+
+**Ubuntu host (Python 3.10):**
+```
+pyserial
+numpy
+psutil
+stress-ng   (apt)
+fio         (apt)
+```
 
 ---
 
