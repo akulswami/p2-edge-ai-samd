@@ -1,0 +1,583 @@
+\documentclass[journal,10pt,twocolumn]{IEEEtran}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{microtype}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{xspace}
+\usepackage[T1]{fontenc}
+
+% ── Macros ───────────────────────────────────────────────────────────────────
+\newcommand{\STER}{\textsc{ster}\xspace}
+\newcommand{\Tstar}{$T^*$\xspace}
+\newcommand{\deli}{$\delta_i$\xspace}
+
+\begin{document}
+
+% ── Title & Author ────────────────────────────────────────────────────────────
+\title{Architectural Isolation as a Timing Safety Primitive for Edge AI
+Medical Devices: Controlled Experimental Evidence on a Shared-Silicon Platform}
+
+\author{Akul~Mallayya~Swami%
+  \thanks{A.~M.~Swami is with Varian Medical Systems, A Siemens
+  Healthineers Company, Palo Alto, CA, USA
+  (e-mail: swami.akul@alumni.uml.edu).
+  ORCID: 0009-0003-9549-5543.
+  Portions of this manuscript were drafted with the assistance of Claude
+  (Anthropic). The author reviewed, verified, and takes full responsibility
+  for all content, experimental data, and claims.}}
+
+\markboth{IEEE Embedded Systems Letters}{}
+\maketitle
+
+% ── Abstract ─────────────────────────────────────────────────────────────────
+\begin{abstract}
+Output correctness and timing reliability are independent safety properties
+of edge AI inference pipelines, yet FDA pre-market validation does not
+explicitly characterize either under deployment conditions.
+This letter demonstrates their independence through a controlled
+same-hardware experiment: identical MobileNetV2 models are evaluated
+under identical adversarial load on two execution paths of the same
+NVIDIA Jetson Orin Nano Super: a dedicated GPU accelerator
+(TensorRT~FP16) and a general-purpose CPU (ONNX Runtime FP32).
+Across five stressor classes and ${\approx}158{,}000$ inference
+activations, both paths maintain
+$\mathrm{STER}{=}0.0000$ (zero exceedances above $T^*{=}0.05$),
+confirming output instability is not the dominant failure mode.
+The paths diverge sharply on timing: the GPU path maintains latency
+${<}15$\,ms under all conditions; the CPU path degrades $7.2{\times}$
+under combined load ($14.5$\,ms to $104.0$\,ms mean,
+$\mathrm{P99}{=}165.1$\,ms), breaching the 10\,Hz clinical cycle budget
+by 65\%.
+Because the same-hardware design eliminates chip-to-chip confounds,
+this divergence is consistent with causal attribution to the dedicated
+accelerator architecture.
+The Safety-Threshold Exceedance Rate (STER), formally defined as the
+proportion of inferences exceeding a clinically-motivated ${\pm}5\%$
+output deviation tolerance, provides a mechanism to verify output
+stability independently of timing, enabling isolation of timing failures
+from functional correctness failures.
+Joint STER\,+\,latency verification is proposed as a candidate
+pre-market acceptance protocol under FDA Draft Guidance
+FDA-2024-D-4488 (January 2025).
+\end{abstract}
+
+\begin{IEEEkeywords}
+edge AI, inference stability, timing safety, architectural isolation,
+Safety-Threshold Exceedance Rate (STER), Software as a Medical Device
+(SaMD), pre-market validation, IEC~62304, ISO~14971, TensorRT,
+ONNX Runtime.
+\end{IEEEkeywords}
+
+% ── I. Introduction ───────────────────────────────────────────────────────────
+\section{Introduction}
+
+FDA pre-market validation of AI-enabled medical devices evaluates model
+accuracy (sensitivity, specificity, AUC) under controlled,
+zero-contention conditions~\cite{fda_draft_guidance}.
+This framework does not explicitly characterize whether inference outputs
+remain within bounds, or whether inference timing is preserved within
+clinical cycle budgets, when the device operates under realistic
+deployment load.
+A 2025 cross-sectional study of 950 FDA-cleared AI-enabled devices found
+that diagnostic errors were the leading cause of AI device recalls, with
+43\% occurring within the first year of clearance~\cite{lee2025recalls}.
+IEC~62304 Clause~6.3.2 requires verification that software meets its
+timing requirements under all foreseeable operating conditions~\cite{iec62304};
+however, no standardized empirical method exists for characterizing
+whether inference pipeline timing is preserved under realistic deployment
+stress.
+
+This letter addresses this gap through a controlled experiment.
+Running identical models under identical stressors on both the GPU
+accelerator and the general-purpose CPU of the same physical hardware
+eliminates platform confounds and supports attribution of timing behavior
+to the accelerator architecture.
+This work makes four contributions:
+\begin{enumerate}
+  \item \textbf{Output/timing independence}: output correctness (STER\,=\,0.0000)
+    is preserved on both paths under all conditions; timing reliability
+    diverges sharply. Current accuracy-based validation may not detect
+    this distinction ($\Delta\mathrm{acc}{<}1.0\%$ on both paths).
+  \item \textbf{Controlled same-hardware evidence}: GPU path maintains
+    STER\,=\,0.0000 and latency ${<}15$\,ms; CPU path maintains
+    STER\,=\,0.0000 but degrades to 104\,ms mean / 165\,ms P99 under
+    combined load, breaching the 10\,Hz clinical cycle budget by 65\%.
+  \item \textbf{STER as output stability verification}: STER formally
+    verifies that inference output distributions remain within a
+    clinically-motivated tolerance band, independently of timing, enabling
+    isolation of timing failures from correctness failures.
+  \item \textbf{Joint pre-market protocol}: STER\,$\leq$\,STER$_{\max}$
+    AND latency$_{\mathrm{P99}}$\,$\leq$\,$T_n$ under foreseeable stressor
+    conditions is proposed as a reproducible acceptance criterion
+    operationalizing FDA-2024-D-4488's robustness assessment requirement.
+\end{enumerate}
+
+% ── II. Related Work ──────────────────────────────────────────────────────────
+\section{Related Work}
+
+Prior edge inference work addresses throughput maximization~\cite{hao2023},
+latency predictability under GPU partitioning~\cite{martin2026}, and
+cross-device accuracy benchmarking~\cite{baller2021,tobiasz2023}.
+These works measure latency \emph{or} output accuracy, not their
+independence under shared-silicon contention.
+Safety-oriented work on neural networks in medical devices~\cite{becker2019}
+addresses model-level mechanisms but does not empirically characterize
+resource-contention-induced timing failure as a distinct safety property
+from output correctness.
+No prior study has used a same-hardware controlled design to isolate the
+architectural contribution of a dedicated accelerator to timing
+safety~\cite{martin2026}.
+
+% ── III. System Model ─────────────────────────────────────────────────────────
+\section{System Model and Formal Definitions}
+
+\subsection{Output Stability Under Identical Inputs}
+
+Let $f$ denote a deployed inference model and $\mathbf{x}_i$ a fixed
+test input ($i = 1,\ldots,N$).
+Under a stressor condition $c$, let $\sigma(\mathbf{y}_i^c)$ denote the
+softmax output and $\bar{\sigma}_i$ the per-image reference softmax
+captured at zero load.
+The per-inference output deviation is:
+\begin{equation}
+  \delta_i = \bigl\|\sigma(\mathbf{y}_i^c) - \bar{\sigma}_i\bigr\|_\infty
+           = \max_k \bigl|\sigma(\mathbf{y}_i^c)_k - \bar{\sigma}_{i,k}\bigr|
+  \label{eq:delta}
+\end{equation}
+
+\subsection{STER Definition}
+
+\textbf{Definition~1} ($T^*$): $T^* = 0.05$, selected as conservative
+relative to ISO~14971 Table~B.1 clinical diagnostic tolerance bands
+(typically 10--20\%).
+
+\textbf{Definition~2} (STER): For $N$ inference activations:
+\begin{equation}
+  \mathrm{STER} = \frac{1}{N}\sum_{i=1}^{N}
+    \mathbf{1}\!\left[\delta_i > T^*\right]
+  \label{eq:ster}
+\end{equation}
+STER verifies output distribution bounds, which accuracy
+($\mathrm{argmax}(\sigma(\mathbf{y}))$, a single label) structurally
+cannot confirm.
+STER is proposed as a candidate pre-market metric, not an existing
+FDA-specified standard.
+
+\subsection{Robustness Confirmation Condition}
+
+The joint pre-market acceptance condition is:
+\begin{equation}
+  \mathrm{STER}_c \leq \mathrm{STER}_{\max}
+  \quad\text{AND}\quad
+  \mathrm{latency}_{\mathrm{P99}} \leq T_n
+  \label{eq:accept}
+\end{equation}
+where $\mathrm{STER}_{\max} = 0$ and $T_n = 100$\,ms (10\,Hz cycle budget).
+STER and latency are orthogonal safety dimensions: a device may satisfy
+(\ref{eq:accept}) fully (GPU path, E0--E5), satisfy only the STER term
+(CPU path, E6), or fail both. Both must be verified.
+
+\subsection{Architectural Model}
+
+The Jetson Orin Nano Super uses shared LPDDR5: CPU, GPU, and memory
+controller compete for the same bus.
+The \emph{GPU execution path} (TensorRT FP16) offloads inference to the
+1024-core Ampere GPU via dedicated DMA paths with QoS bandwidth
+reservation, isolating inference from CPU scheduling pressure.
+The \emph{CPU execution path} (ONNX Runtime FP32) runs on the
+6-core Arm Cortex-A78AE cluster, directly competing with stressor
+workloads for CPU time, cache, and DRAM bandwidth.
+This architectural difference is hypothesized to produce divergent
+timing behavior under contention while preserving output correctness on both paths; this is empirically tested in E1--E6.
+
+% ── IV. Hardware & Protocol ───────────────────────────────────────────────────
+\section{Hardware Platform and Experimental Protocol}
+
+\subsection{Hardware Platform}
+
+\begin{table}[!t]
+\caption{Hardware Platform Summary}
+\label{tab:hardware}
+\centering
+\small
+\begin{tabular}{p{2.4cm}p{1.5cm}p{3.6cm}}
+\toprule
+\textbf{Component} & \textbf{Role} & \textbf{Key Specification} \\
+\midrule
+Jetson Orin Nano Super 8GB (GPU path)
+  & Primary inference host
+  & 1024-core Ampere GPU, TensorRT FP16, shared LPDDR5 \\
+Jetson Orin Nano Super 8GB (CPU path)
+  & Negative control (same hardware)
+  & ONNX Runtime FP32, CPUExecutionProvider, Cortex-A78AE \\
+nRF52840 DK + TI SensorTag
+  & BLE network stressor
+  & BLE 5.0, up to 6 simultaneous connections \\
+GL-AX1800 WiFi~6 Router
+  & RF environment
+  & 2.4\,GHz co-channel interference \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both execution paths run MobileNetV2~\cite{sandler2018} (224$\times$224
+RGB, ImageNet 1000-class head) on the same 500-image fixed test set,
+held constant across all experiments.
+The GPU path runs TensorRT FP16~\cite{tensorrt} at a nominal 10\,Hz
+($T_n = 100$\,ms); the CPU path runs MobileNetV2 FP32 via ONNX
+Runtime~\cite{onnxruntime} on the same hardware.
+Using the same physical device for both paths is the critical
+methodological choice: it eliminates chip-to-chip variation and thermal
+differences as confounds, supporting attribution of timing behavior to
+the accelerator architecture.
+
+\subsection{Experimental Protocol}
+
+\begin{table}[!t]
+\caption{Experiment Summary}
+\label{tab:experiments}
+\centering
+\small
+\begin{tabular}{p{0.5cm}p{1.8cm}p{4.6cm}p{0.55cm}}
+\toprule
+\textbf{ID} & \textbf{Stressor} & \textbf{Protocol} & \textbf{IEC} \\
+\midrule
+E0 & Baseline & Both paths, zero load. Per-image reference $\bar{\sigma}_i$ captured. 10 trials $\times$ 500 inferences. & B+C \\
+\addlinespace
+E1 & CPU stress & stress-ng at 25/50/75/100\% system-wide load. Both paths tested at each level. 10 trials $\times$ 500 inferences per level. & B \\
+\addlinespace
+E2--E4 & Isolation stressors & Memory pressure (25--90\% fill), GPU co-tenancy (0--4 workers), network I/O (BLE 0--6 conns\,+\,WiFi). GPU path only; STER\,=\,0.0000 across all conditions. 5--10 trials per level. & B/C \\
+\addlinespace
+E5 & Combined load & CPU 75\%\,+\,memory 50\%\,+\,BLE 4 conns\,+\,fio disk write. Both paths. 10 trials $\times$ 500 inferences. \emph{Worst-case deployment scenario.} & C \\
+\addlinespace
+E6 & CPU negative control & CPU path only (no GPU). Conditions matching E0\,+\,E1\,+\,E5. 10 trials $\times$ 500 inferences per condition. Primary contrastive result. & B \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+For each trial, $N = 500$ inference activations are recorded.
+For each activation $i$: (1)~fixed test input $\mathbf{x}_i$ is
+presented; (2)~softmax $\sigma(\mathbf{y}_i)$ is recorded;
+(3)~$\delta_i$ is computed per~(\ref{eq:delta}) against the per-image
+zero-load reference; (4)~latency is recorded via \texttt{time.perf\_counter()}.
+STER is computed per~(\ref{eq:ster}) over the $N$ activations.
+Top-1 accuracy is computed as a control variable.
+
+% ── V. Results ────────────────────────────────────────────────────────────────
+\section{Results}
+
+\subsection{E0: Baseline Calibration}
+
+\begin{table}[!t]
+\caption{E0 Baseline: Both Execution Paths}
+\label{tab:e0}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Path} & \textbf{STER} & \boldmath$\delta_\text{mean}$ & \textbf{Lat.\,mean} & \textbf{Lat.\,P99} \\
+\midrule
+GPU (TensorRT FP16) & 0.0000 & 0.0181 & 14.8\,ms & $\approx$18\,ms \\
+CPU (ONNX FP32)     & 0.0000 & 0.0000 & 14.5\,ms & 18.6\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both paths establish matched zero-load baselines ($\Delta$latency
+${<}0.3$\,ms), confirming controlled experimental conditions.
+GPU floating-point variance produces $\delta_\text{mean}{=}0.0181$ but
+zero exceedances above $T^*{=}0.05$; CPU ONNX Runtime is
+arithmetically deterministic ($\delta{=}0.0000$ exactly).
+Top-1 accuracy: 1.6\% on both paths (same model, same images,
+same label mapping; accuracy values reflect ImageNet label remapping
+and are not used as performance benchmarks).
+
+\subsection{E1: CPU Stress and Timing Divergence}
+
+\begin{table}[!t]
+\caption{E1 CPU Stress: Both Paths (10 trials $\times$ 500 inferences per level)}
+\label{tab:e1}
+\centering
+\small
+\begin{tabular}{ccccc}
+\toprule
+\multirow{2}{*}{\textbf{CPU Load}}
+  & \multicolumn{2}{c}{\textbf{GPU Path}}
+  & \multicolumn{2}{c}{\textbf{CPU Path}} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+  & STER & Lat.\,mean & STER & Lat.\,mean \\
+\midrule
+25\%  & 0.0000 & ${\approx}$14.8\,ms & 0.0000 & 33.4\,ms \\
+50\%  & 0.0000 & ${\approx}$14.8\,ms & 0.0000 & 57.8\,ms \\
+75\%  & 0.0000 & ${\approx}$14.8\,ms & 0.0000 & 73.7\,ms \\
+100\% & 0.0000 & ${\approx}$14.8\,ms & 0.0000 & 70.9\,ms \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Both paths maintain STER\,=\,0.0000 at all CPU load levels;
+$\delta_\text{mean}$ is load-invariant on both paths.
+Timing diverges immediately: the GPU path is invariant
+(${\approx}14.8$\,ms regardless of load) while the CPU path
+scales with contention, reaching $73.7$\,ms at 75\% load, already $5.1{\times}$ the zero-load baseline.
+TensorRT FP16 executes entirely on the GPU; the 6-core Arm cores
+saturated by stress-ng have no architectural path to disturb the
+inference pipeline.
+ONNX Runtime FP32 competes directly with the stressor for CPU time
+slices and cache bandwidth, producing latency degradation without
+affecting arithmetic output.
+
+\subsection{E2--E4: Isolation Stressors (GPU Path)}
+
+Memory pressure (25--90\% LPDDR5 fill), GPU co-tenancy (0--4
+concurrent TensorRT workers), and network I/O (BLE 0--6 connections
+with WiFi co-channel interference) all produce STER\,=\,0.0000 with
+$\delta_\text{mean}$ indistinguishable from E0 baseline on the GPU path
+($\delta_\text{mean}{=}0.0181\pm0.0002$ across all conditions, $n{>}25{,}000$
+inferences per stressor class).
+GPU DMA isolation, dedicated QoS bandwidth reservation, and independent
+TensorRT execution contexts prevent all tested stressor classes from
+perturbing inference outputs or latency.
+A confirmed +88\% CPU interrupt rate increase at BLE conns\,=\,4
+(389\,$\to$\,732 IRQ/min) produced no measurable effect on GPU path
+timing.
+
+\subsection{E5: Combined Realistic Load}
+
+Under simultaneous CPU 75\% + memory 50\% fill + BLE 4 connections
++ fio disk write, the GPU path maintains STER\,=\,0.0000 and latency
+${<}15$\,ms (mean $14.9$\,ms, $\delta_\text{mean}{=}0.0156\pm0.0001$)
+across all 10 trials.
+The CPU path maintains STER\,=\,0.0000 but reaches 104.0\,ms mean /
+165.1\,ms P99, exceeding the 10\,Hz cycle budget by 65\%.
+
+\subsection{E6: CPU Negative Control}
+
+\begin{table}[!t]
+\caption{E6 CPU-Only Negative Control: Jetson Orin Nano Super,
+  ONNX Runtime FP32 (10 trials $\times$ 500 inferences per condition)}
+\label{tab:e6}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Condition} & \textbf{STER} & \boldmath$\delta_\text{mean}$ & \textbf{Lat.\,mean} & \textbf{Lat.\,P99} \\
+\midrule
+Zero load    & 0.0000 & 0.0000 & 14.5\,ms & 18.6\,ms \\
+CPU 25\%     & 0.0000 & 0.0000 & 33.4\,ms & 111.4\,ms \\
+CPU 50\%     & 0.0000 & 0.0000 & 57.8\,ms & 115.8\,ms \\
+CPU 75\%     & 0.0000 & 0.0000 & 73.7\,ms & 122.1\,ms \\
+CPU 100\%    & 0.0000 & 0.0000 & 70.9\,ms & 117.0\,ms \\
+\textbf{Combined} & \textbf{0.0000} & \textbf{0.0000} & \textbf{104.0\,ms} & \textbf{165.1\,ms}$^\dagger$ \\
+\bottomrule
+\multicolumn{5}{l}{$^\dagger$ Exceeds $T_n{=}100$\,ms cycle budget by 65\%.}
+\end{tabular}
+\end{table}
+
+STER\,=\,0.0000 and $\delta{=}0.0000$ exactly across all 50,000
+inferences: ONNX Runtime's CPUExecutionProvider uses deterministic
+ARM NEON SIMD operations; scheduling pressure delays computation
+without perturbing its arithmetic.
+Latency degrades monotonically with stressor intensity, reaching
+$7.2{\times}$ baseline under combined load.
+P99\,=\,165.1\,ms under combined load means 1\% of inferences
+exceed the clinical cycle budget by ${\geq}65\%$.
+The GPU path, under identical combined load, maintains latency
+${<}15$\,ms across all 10 trials.
+E6 establishes that the dedicated GPU accelerator's contribution to
+the safety profile is \emph{timing isolation}, not numerical stability; this is a property of deterministic floating-point execution regardless of accelerator.
+
+\subsection{Summary}
+
+\begin{table}[!t]
+\caption{Summary: GPU vs.\ CPU Path Under Worst-Case Conditions}
+\label{tab:summary}
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Path / Condition} & \textbf{STER} & \boldmath$\delta_\text{mean}$ & \textbf{Lat.\,mean} & \textbf{Lat.\,P99} \\
+\midrule
+GPU E0 (baseline)     & 0.0000 & 0.0181 & 14.8\,ms & $\approx$18\,ms \\
+GPU E5 (combined)     & 0.0000 & 0.0156 & 14.9\,ms & $\approx$18\,ms \\
+CPU E0 (baseline)     & 0.0000 & 0.0000 & 14.5\,ms & 18.6\,ms \\
+CPU E5/E6 (combined)  & 0.0000 & 0.0000 & 104.0\,ms & 165.1\,ms$^\dagger$ \\
+\bottomrule
+\multicolumn{5}{l}{$^\dagger$ Exceeds $T_n$ by 65\%. STER passes; deployment timing fails.}
+\end{tabular}
+\end{table}
+
+% ── VI. Discussion ────────────────────────────────────────────────────────────
+\section{Discussion}
+
+\subsection{Controlled Design as Methodological Contribution}
+
+The same-hardware design is the critical methodological choice.
+Cross-platform comparisons (e.g., Jetson vs.\ a different board) cannot
+establish causality because thermal, memory topology, and driver-stack
+differences confound the result.
+Running GPU and CPU paths on the same Jetson Orin Nano Super controls
+for all hardware-level confounds; the timing divergence of $7.2{\times}$
+under identical stressors is consistent with causal attribution to the
+accelerator architecture.
+Platform datasheets document architectural separation in principle;
+this work provides empirical quantification across simultaneous
+multi-class stressor combinations at clinical deployment intensities.
+
+\subsection{Timing as the Dominant Failure Mode}
+
+STER\,=\,0.0000 on both paths establishes that output instability is
+not the failure mode under realistic resource contention on this
+hardware.
+The dominant failure mode is timing degradation, which is invisible
+to STER, invisible to accuracy, and invisible to any output-only
+evaluation method.
+This result motivates explicit timing characterization as a
+complementary pre-market verification property, not as a replacement
+for output stability metrics.
+
+\subsection{Pre-Market Validation Gap}
+
+Standard accuracy-based FDA pre-market testing would pass both
+execution paths without distinguishing their timing safety profiles:
+$\Delta\mathrm{acc}{<}1.0\%$ under all conditions on both paths.
+A manufacturer using accuracy-only testing would clear both a
+GPU-accelerated and a CPU-only deployment as equivalent, but the CPU-only deployment breaches the 10\,Hz clinical cycle budget by 65\%
+under combined load.
+The joint acceptance condition~(\ref{eq:accept}) closes this gap
+with reproducible, hardware-agnostic criteria.
+
+\subsection{STER as Output Stability Certification}
+
+STER certifies that the full output distribution $\sigma(\mathbf{y})$
+remains within the $T^*$ tolerance band, a property that
+$\mathrm{argmax}(\sigma(\mathbf{y}))$ (accuracy) structurally cannot
+confirm.
+A model whose top-1 prediction is unchanged but whose confidence
+distribution shifts by 4.9\% passes accuracy testing but may
+violate $T^*$; STER detects this; accuracy does not.
+STER\,=\,0.0000 on both paths in this study confirms output stability
+under all tested conditions and isolates timing as the sole
+safety-relevant divergence.
+
+\subsection{Limitations}
+
+Results are specific to MobileNetV2 at 10\,Hz on Jetson Orin Nano Super
+under JetPack~6.
+Models with higher memory bandwidth utilization, non-deterministic
+preprocessing, or non-linear latency-throughput profiles may exhibit
+different behavior.
+$T^*{=}0.05$ is conservative relative to ISO~14971 Table~B.1 but is
+not clinically validated for any specific device class; the appropriate
+$T^*$ is a manufacturer and clinical risk management decision.
+
+% ── VII. Conclusion ───────────────────────────────────────────────────────────
+\section{Conclusion}
+
+This letter has demonstrated, through a controlled same-hardware
+experiment, that output correctness and timing reliability are
+independent safety properties of edge AI inference pipelines.
+Running MobileNetV2 under identical adversarial stressors on the GPU
+and CPU execution paths of the same Jetson Orin Nano Super, both
+paths maintain STER\,=\,0.0000 across ${\approx}158{,}000$ inference
+activations; the GPU path maintains latency ${<}15$\,ms while the CPU
+path degrades $7.2{\times}$ to 104.0\,ms mean / 165.1\,ms P99 under
+combined load, breaching the 10\,Hz clinical cycle budget.
+Current accuracy-based FDA pre-market testing would pass both paths
+without detecting this timing failure.
+STER formally verifies output distribution bounds; latency verification
+under contention is required for timing safety.
+These results indicate that ensuring output correctness alone may be
+insufficient for reliable clinical deployment; temporal behavior under
+realistic system contention must be explicitly validated.
+Joint STER\,+\,latency verification is proposed as a candidate
+pre-market acceptance protocol, operationalizing FDA Draft Guidance
+FDA-2024-D-4488 and consistent with IEC~62304 and ISO~14971.
+
+% ── References ────────────────────────────────────────────────────────────────
+\bibliographystyle{IEEEtran}
+
+\begin{thebibliography}{15}
+
+\bibitem{fda_draft_guidance}
+FDA, ``Artificial Intelligence-Enabled Device Software Functions:
+Lifecycle Management and Marketing Submission Recommendations,''
+Draft Guidance, Docket FDA-2024-D-4488, Jan.\ 2025.
+
+\bibitem{fda_gmlp}
+FDA, ``Good Machine Learning Practice for Medical Device Development:
+Guiding Principles,'' Oct.\ 2021.
+
+\bibitem{hao2023}
+J.~Hao, P.~Subedi, L.~Ramaswamy, and I.\,K. Kim,
+``Reaching for the Sky: Maximizing Deep Learning Inference Throughput
+on Edge Devices with AI Multi-Tenancy,''
+\emph{ACM Trans.\ Internet Technol.}, vol.~23, no.~1, pp.~1--33,
+Feb.\ 2023.
+
+\bibitem{martin2026}
+J.\,J.~Mart\'{\i}n, A.~Castillo, J.~Garc\'{\i}a, and F.\,J.~Cazorla,
+``Performance Isolation for Inference Processes in Edge GPU Systems,''
+arXiv:2601.07600, Jan.\ 2026.
+
+\bibitem{baller2021}
+S.\,P.~Baller, A.~Jindal, M.~Chadha, and M.~Gerndt,
+``DeepEdgeBench: Benchmarking Deep Neural Networks on Edge Devices,''
+in \emph{Proc.\ IEEE Int.\ Conf.\ Cloud Eng.\ (IC2E)}, 2021,
+pp.~20--30.
+
+\bibitem{tobiasz2023}
+R.~Tobiasz \emph{et al.},
+``Edge Devices Inference Performance Comparison,''
+arXiv:2306.12093, Jun.\ 2023.
+
+\bibitem{becker2019}
+U.~Becker,
+``Increasing Safety of Neural Networks in Medical Devices,''
+in \emph{Proc.\ SAFECOMP Workshops}, LNCS vol.~11699,
+Springer, 2019, pp.~91--101.
+
+\bibitem{iec62304}
+IEC~62304:2006+AMD1:2015, ``Medical device software: Software life cycle processes,'' IEC, Geneva, 2015.
+
+\bibitem{iso14971}
+ISO~14971:2019, ``Medical devices: Application of risk management to medical devices,'' ISO, Geneva, 2019.
+
+\bibitem{stressng}
+C.\,I.~King, ``stress-ng: A Tool to Load and Stress a Computer
+System,'' GitHub, 2023. [Online]. Available:
+https://github.com/ColinIanKing/stress-ng
+
+\bibitem{holoscan}
+NVIDIA Corporation, ``Holoscan SDK: A Platform for Medical Device
+Developers,'' NVIDIA Developer Documentation, 2024. [Online].
+Available: https://developer.nvidia.com/holoscan-sdk
+
+\bibitem{sandler2018}
+M.~Sandler, A.~Howard, M.~Zhu, A.~Zhmoginov, and L.-C.~Chen,
+``MobileNetV2: Inverted Residuals and Linear Bottlenecks,''
+in \emph{Proc.\ IEEE/CVF CVPR}, 2018, pp.~4510--4520.
+
+\bibitem{tensorrt}
+NVIDIA Corporation, ``TensorRT Developer Guide,'' NVIDIA Developer
+Documentation, 2024. [Online]. Available:
+https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/
+
+\bibitem{onnxruntime}
+Microsoft Corporation, ``ONNX Runtime: Cross-Platform Inference
+Accelerator,'' GitHub, 2024. [Online]. Available:
+https://github.com/microsoft/onnxruntime
+
+\bibitem{lee2025recalls}
+B.~Lee \emph{et al.},
+``Early Recalls and Clinical Validation Gaps in Artificial
+Intelligence-Enabled Medical Devices,''
+\emph{JAMA Health Forum}, vol.~6, no.~8, p.~e253172, Aug.\ 2025.
+
+\end{thebibliography}
+
+\end{document}
