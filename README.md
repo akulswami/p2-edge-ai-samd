@@ -3,21 +3,21 @@
 **Target venue:** IEEE Embedded Systems Letters (ESL) — 4-page letter format  
 **Submission target:** May 20, 2026  
 **Repo:** github.com/akulswami/p2-edge-ai-samd  
-**Paper status:** Pivot complete — controlled isolation experiment framing, Coral removed, LaTeX conversion in progress
+**Paper status:** Submission-ready — 4-page IEEEtran LaTeX, all review fixes applied
 
 ---
 
 ## Paper Summary
 
-This letter demonstrates, through a controlled same-hardware experiment, that output correctness and timing reliability are independent safety properties of edge AI inference pipelines — and that dedicated inference accelerators provide timing isolation as a distinct architectural safety primitive.
+This letter demonstrates that accuracy-based pre-market validation can certify systems that violate timing constraints under deployment load, and introduces STER to isolate output stability from temporal safety — two properties current validation does not distinguish.
 
-**Experimental design:** The same MobileNetV2 model is evaluated under identical adversarial load on two execution paths of the same physical hardware — a dedicated GPU accelerator (TensorRT FP16) and a general-purpose CPU (ONNX Runtime FP32) — on the NVIDIA Jetson Orin Nano Super. Using the same physical device for both paths eliminates platform confounds and enables causal attribution of timing behavior to the accelerator architecture specifically.
+**The novelty is not timing degradation** — that is known — but the validation blindness to it: a system passes accuracy-based certification while being undeployable at the required clinical activation rate, and no current FDA pre-market method detects this.
 
-**Central finding:** Both paths maintain STER = 0.0000 (zero output exceedances above T* = 0.05) across ~158,000 inference activations. The paths diverge sharply on timing: the GPU path maintains latency <15 ms under all conditions; the CPU path degrades 7.2× under combined load (14.5 ms → 104.0 ms mean, P99 = 165.1 ms), breaching the 10 Hz clinical cycle budget by 65%.
+**Experimental design:** The same MobileNetV2 model is evaluated under identical adversarial load on two execution paths of the same physical hardware — a dedicated GPU accelerator (TensorRT FP16) and a general-purpose CPU (ONNX Runtime FP32) — on the NVIDIA Jetson Orin Nano Super. All hardware variables are held constant so any observed divergence arises from execution context, isolating the software execution path as the operative factor.
 
-**Causal claim:** Because same-hardware design eliminates chip-to-chip variation as a confound, timing divergence is causally attributable to the dedicated accelerator architecture. A device can be output-correct and still clinically unsafe.
+**Central finding:** Both paths maintain STER = 0.0000 (zero output exceedances above T* = 0.05) across ~158,000 inference activations. The paths diverge sharply on timing: the GPU path maintains latency <15 ms under all conditions; the CPU path degrades 7.2× under combined load (14.5 ms → 104.0 ms mean, P99 = 165.1 ms), breaching the 10 Hz clinical cycle budget by 65%. This violation persists undetected under accuracy-based validation (Δacc < 1.0%).
 
-**Regulatory anchor:** FDA Draft Guidance FDA-2024-D-4488 (January 2025) requires robustness assessment for reasonably foreseeable conditions of use. Joint STER + latency verification under foreseeable stressor conditions is proposed as a concrete pre-market acceptance protocol operationalizing that requirement.
+**Regulatory anchor:** FDA Draft Guidance FDA-2024-D-4488 (January 2025) requires robustness assessment for foreseeable conditions of use. Joint STER + latency verification is proposed as a concrete pre-market acceptance protocol operationalizing that requirement, consistent with IEC 62304 and ISO 14971.
 
 ---
 
@@ -31,7 +31,7 @@ STER = (1/N) · Σᵢ 𝟙[δᵢ > T*]
 
 where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm on the softmax probability vector vs. the per-image zero-load reference, and `T* = 0.05`.
 
-**Why STER ≠ accuracy:** Accuracy is argmax(σ(y)) — a single label. STER is a function of the full distribution σ(y). These are structurally distinct. STER = 0.0000 on both paths is the experimental control confirming output instability is not the failure mode — isolating timing degradation as the sole safety-relevant divergence.
+**Why STER ≠ accuracy:** Accuracy evaluates argmax(σ(y)) — a single class label — and cannot detect bounded distribution drift below the argmax threshold. This is a structural limitation, not a sensitivity issue. STER captures this class of silent deviations; accuracy cannot by construction. STER = 0.0000 on both paths confirms output instability is not the failure mode, isolating timing degradation as the sole safety-relevant divergence.
 
 ---
 
@@ -60,7 +60,7 @@ where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm o
 | **E3** | GPU co-tenancy (0–4 workers) | ✅ | — | 0.0000 GPU |
 | **E4** | Network I/O — BLE/WiFi | ✅ | — | 0.0000 GPU |
 | **E5** | Combined realistic load | ✅ | ✅ | 0.0000 both; GPU <15 ms, CPU 104 ms mean / 165 ms P99 |
-| **E6** | CPU-only negative control | — | ✅ | 0.0000 STER; 7.2× latency degradation |
+| **E6** | CPU-only negative control | — | ✅ | 0.0000 STER; 7.2× latency degradation — timing violation confirmed |
 
 **Total inference activations:** ~158,000 (GPU path) + ~50,000 (CPU path) = ~208,000 collected.
 
@@ -68,7 +68,7 @@ where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm o
 
 ## Key Results
 
-### E6 — CPU Negative Control
+### E6 — CPU Negative Control (Primary Contrastive Result)
 
 | Condition | STER | δ_mean | Latency_mean | Latency_P99 |
 |---|---|---|---|---|
@@ -79,7 +79,7 @@ where `δᵢ = ‖σ(yᵢ) − σ̄ᵢ‖∞` is the per-image L-infinity norm o
 | CPU 100% | 0.0000 | 0.0000 | 70.9 ms | 117.0 ms |
 | **Combined** | **0.0000** | **0.0000** | **104.0 ms** | **165.1 ms ⚠️** |
 
-⚠️ P99 = 165.1 ms exceeds 10 Hz cycle budget (100 ms) by 65%. STER passes; deployment fails.
+⚠️ P99 = 165.1 ms exceeds 10 Hz cycle budget (100 ms) by 65%. STER passes; deployment timing fails. Validation blindness confirmed: Δacc < 1.0% under identical conditions.
 
 ---
 
@@ -137,10 +137,11 @@ p2-edge-ai-samd/
 │       ├── e4_coral_conns4.csv
 │       ├── e4_coral_conns6.csv
 │       └── e5_coral_results.json
-├── paper/
-│   ├── P2_IEEE_ESL_Draft_E6.docx      Previous draft (pre-pivot)
-│   └── P2_IEEE_ESL_Draft_Pivot.docx   Current draft (pivot framing) ← LATEST
-└── README.md
+└── paper/
+    ├── P2_IEEE_ESL_Draft_E6.docx       Early draft (pre-pivot, archived)
+    ├── P2_IEEE_ESL_Draft_Pivot.docx    Word draft (pivot framing)
+    ├── p2_paper_submission.tex         Submission-ready LaTeX source ← LATEST
+    └── p2_paper_submission.pdf         Compiled submission PDF ← LATEST
 ```
 
 ---
@@ -169,33 +170,39 @@ p2-edge-ai-samd/
 
 ## Paper Status
 
-**Current draft:** `paper/P2_IEEE_ESL_Draft_Pivot.docx`
+**Submission files:** `paper/p2_paper_submission.tex` and `paper/p2_paper_submission.pdf`
 
-| Section | Status |
-|---|---|
-| Title | ✅ Architectural isolation framing |
-| Abstract | ✅ Controlled experiment, causal claim, joint STER+latency |
-| Introduction | ✅ Independence gap, controlled experiment as method |
-| Related Work | ✅ Complete |
-| System Model (Sec. III) | ✅ CPU/GPU architectural model, STER as output control |
-| Hardware & Protocol (Sec. IV) | ✅ Two-path same-hardware design, Coral removed |
-| Results E0–E5 GPU (Sec. V) | ✅ GPU path positive baseline |
-| Results E6 CPU (Sec. V) | ✅ Negative control, timing failure demonstrated |
-| Discussion (Sec. VI) | ✅ Causal isolation argument, joint STER+latency protocol |
-| Conclusion (Sec. VII) | ✅ Causal claim, joint protocol proposal |
-| References [1]–[14] | ✅ Complete (Coral ref removed) |
+| Section | Status | Notes |
+|---|---|---|
+| Title | ✅ Final | Architectural isolation framing |
+| Abstract | ✅ Final | Opens with unifying sentence: "A system can satisfy accuracy-based validation... and still violate timing constraints" |
+| Introduction | ✅ Final | Paradigm failure stated, kill shot added ("novelty is validation blindness"), contribution collapsed to single claim |
+| Related Work | ✅ Final | Problem class separation vs. Martín et al. [4] explicit |
+| System Model (Sec. III) | ✅ Final | Formal violation definition + data linkage + operational anchor + downstream consequence (N9→N10→N13→N16 chain) |
+| Hardware & Protocol (Sec. IV) | ✅ Final | Thermal monitoring confirmed, determinism declared, stats statement |
+| Results (Sec. V) | ✅ Final | E0–E6; obvious result preemption at section end |
+| Discussion (Sec. VI) | ✅ Final | Contribution lock opens section; engineering evidence scoped; repetition trimmed |
+| Conclusion (Sec. VII) | ✅ Final | Output correctness alone insufficient; temporal validation required |
+| References [1]–[15] | ✅ Final | 15 refs, all on page 4 |
+| Page count | ✅ 4 pages | IEEEtran two-column, 10pt, letter format |
 
 **Remaining before May 20:**
-1. LaTeX conversion (IEEEtran, 4-page limit)
-2. Submit via IEEE Author Portal: ieee.atyponrex.com/journal/les-ieee
-3. Simultaneous arXiv upload
-4. Update six_research_papers_v2.docx P2 description
+1. Submit via IEEE Author Portal: ieee.atyponrex.com/journal/les-ieee
+2. Simultaneous arXiv upload — account: akulswami, primary category: eess.SY, cross-list: cs.AR
+3. Update six_research_papers_v2.docx P2 entry to match final framing
 
 ---
 
-## Key Design Decision: Why Same-Hardware Design
+## Key Design Decisions
 
-Cross-platform comparisons cannot establish causality because hardware differences confound the result. Running GPU and CPU paths on the same Jetson Orin Nano Super eliminates all hardware-level confounds. The 7.2× timing divergence under identical stressors is therefore causally attributable to the accelerator architecture — the methodological contribution that distinguishes this paper from prior benchmarking work.
+**Why same-hardware design is the methodological contribution:**
+Cross-platform comparisons leave hardware differences as alternative explanations for any observed divergence. Running GPU and CPU paths on the same Jetson Orin Nano Super holds all hardware variables constant. Any observed divergence therefore arises from execution context, isolating the software execution path as the operative factor. This is not a performance comparison; it is a controlled experiment exposing a validation failure.
+
+**Why the contribution is validation blindness, not architectural characterization:**
+The claim is not "GPU is faster than CPU under load" — that is known. The claim is that current FDA pre-market validation certifies both the GPU-accelerated and CPU-only deployments as equivalent (Δacc < 1.0%), while one violates timing constraints by 65% under foreseeable deployment conditions. The novelty is the validation failure.
+
+**Why STER = 0.0000 on both paths is not a null result:**
+It establishes that output instability is not the failure mode under realistic contention. This makes timing degradation the sole safety-relevant divergence — and makes the validation blindness claim clean. Without STER confirming output stability independently, timing failures cannot be isolated from correctness failures by construction.
 
 ---
 
