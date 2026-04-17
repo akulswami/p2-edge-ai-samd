@@ -83,8 +83,10 @@ model accuracy (sensitivity, specificity, area under the receiver operating curv
 under controlled, zero-contention conditions~\cite{fda2025}. This framework does not
 characterize whether inference outputs remain within bounds, or whether inference
 timing is preserved within clinical cycle budgets, under realistic deployment load.
-A 2025 cross-sectional study of 950 FDA-cleared AI devices found diagnostic errors
-were the leading recall cause, with 43\% occurring within the first year~\cite{lee2025}.
+A 2025 cross-sectional study of 950 FDA-cleared AI-enabled medical devices identified
+60 devices subject to 182 recall events; diagnostic or measurement errors were the
+leading cause, and 43\% of recalls occurred within the first year of
+clearance~\cite{lee2025}.
 International Electrotechnical Commission (IEC)~62304 Clause~6.3.2 requires software
 timing verification under foreseeable conditions~\cite{iec62304}, yet accuracy-based
 certification cannot detect timing violations under deployment load.
@@ -96,8 +98,9 @@ protocols do not jointly verify output stability and timing reliability at the
 inference layer under deployment load. The safety criterion
 is not latency magnitude but whether latency satisfies the clinical deadline; a change
 in accuracy ($\Delta\text{acc}$) of less than 1.0\% does not indicate deadline
-compliance. The experiment holds all hardware variables constant so any divergence
-arises from execution context alone. Results show STER$=0$ on both paths while CPU
+compliance. The experiment holds all hardware variables constant so that divergence arises from
+the execution stack---the combined effect of architectural path, runtime, and
+numerical precision---rather than from chip-to-chip or thermal variability. Results show STER$=0$ on both paths while CPU
 $P_{99}$ (99th-percentile latency) exceeds the 10\,Hz budget by 65\% under combined
 load. A joint STER and latency protocol, consistent with FDA-2024-D-4488, is described.
 
@@ -105,9 +108,13 @@ load. A joint STER and latency protocol, consistent with FDA-2024-D-4488, is des
 \section{Related Work}
 
 Prior edge inference work addresses throughput maximization~\cite{hao2023},
-latency predictability under GPU partitioning~\cite{marin2026}, and cross-device
-accuracy benchmarking~\cite{baller2021,tobiasz2023}, measuring latency or accuracy,
-not their independence under shared-silicon contention.
+GPU partitioning for temporal isolation on Jetson Orin (MPS, MIG, Green
+Contexts)~\cite{marin2026}, and cross-device accuracy
+benchmarking~\cite{baller2021,tobiasz2023}. These measure latency or accuracy in
+isolation, not their joint characterization under shared-silicon contention;
+\cite{marin2026} is closest in platform and concern but addresses timing
+isolation between parallel GPU processes, not output stability as an independent
+safety property, and does not include a CPU-path comparator.
 Safety-oriented work on neural networks in medical devices~\cite{becker2019} addresses
 model-level mechanisms but does not empirically characterize resource-contention-induced
 timing failure as a distinct property from output correctness.
@@ -256,8 +263,11 @@ Both paths establish zero-load baselines (Table~\ref{tab:baseline}). GPU latency
 (10.6\,ms mean; 10.9\,ms $P_{99}$) reflects end-to-end pipeline time; CPU latency
 (14.5\,ms mean) reflects pure ONNX Runtime execution. GPU floating-point variance
 produces non-zero $\delta_{\text{mean}}$ but zero STER; CPU is arithmetically
-deterministic. Top-1 accuracy is 1.5\% on both paths (label-space mismatch;
-accuracy is a control variable only).
+deterministic. Top-1 predictions are recorded as a control variable only; the test
+set uses Tiny ImageNet images against the full ImageNet-1000 head, so absolute
+accuracy is not a dependent measure. Equality of top-1 distributions across
+conditions ($\Delta\text{acc}<1.0\%$) confirms that accuracy-based validation would
+not flag any tested condition.
 
 \begin{table}[t]
   \caption{E0 Baseline. $\delta_{\text{mean}}$: Mean output deviation~(\ref{eq:delta}); Lat.\ SD: per-trial SD; $P_{99}$: 99th-pct.\ latency.}
@@ -369,9 +379,7 @@ validation cannot detect this degradation, as demonstrated empirically here.
 The same-hardware design controls for all hardware-level confounds; CPU-path timing
 degradation of 7.2$\times$ (14.5 to 104\,ms mean) and the 9.8$\times$ GPU/CPU
 contrast under combined load reflect the combined effect of execution path architecture,
-runtime (TensorRT vs.\ ONNX), and precision (FP16 vs.\ FP32). Further validation
-including controlled ablation studies isolating individual factors, and testing against
-regulated device workflows, is required before 510(k) adoption.
+runtime (TensorRT vs.\ ONNX), and precision (FP16 vs.\ FP32).
 
 \subsection{Timing as the Dominant Failure Mode}
 
@@ -381,9 +389,7 @@ an observed CPU-path latency increase could reflect output-level degradation (sl
 inference due to numerical instability) rather than pure scheduling pressure.
 STER$=0$ rules this out: scheduling pressure delays computation without perturbing
 arithmetic, making timing degradation the sole identifiable safety-relevant divergence
-(Fig.~\ref{fig:scatter}). This motivates timing characterization as an independent,
-complementary pre-market verification property, one that accuracy-based validation
-is structurally unable to provide.
+(Fig.~\ref{fig:scatter}).
 
 \begin{figure}[t]
   \centering
@@ -391,8 +397,7 @@ is structurally unable to provide.
   \caption{STER vs.\ mean latency for all experimental conditions. Both GPU and CPU
   paths maintain STER$=0$ (below $T^*=0.05$) regardless of latency. GPU clusters at
   10.6\,ms across all conditions; CPU spans 14.5--104.0\,ms, breaching $T_n=100$\,ms
-  while STER remains zero. Output stability and timing reliability are structurally
-  independent properties.}
+  while STER remains zero.}
   \label{fig:scatter}
 \end{figure}
 
@@ -479,7 +484,7 @@ Deep Learning Inference Throughput on Edge Devices with AI Multi-Tenancy,''
 \textit{ACM Trans.\ Internet Technol.}, vol.\ 23, no.\ 1, pp.\ 1--33, Feb.\ 2023.
 
 \bibitem{marin2026}
-J.~J.~Mart\'{\i}n, A.~Castillo, J.~Garc\'{\i}a, and F.~J.~Cazorla,
+J.~J.~Mart\'{\i}n, J.~Flich, and C.~Hern\'{a}ndez,
 ``Performance Isolation for Inference Processes in Edge GPU Systems,''
 arXiv:2601.07600, Jan.\ 2026.
 
