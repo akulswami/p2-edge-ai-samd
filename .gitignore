@@ -1,11 +1,44 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
 .env
+.venv/
+venv/
 e0_env/
 coralmicro_venv/
+
+.DS_Store
+Thumbs.db
+
 *.trt
 *.onnx
+
 data/img_*.jpg
 data/manifest.json
-.DS_Store
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.nav
+*.out
+*.run.xml
+*.snm
+*.synctex.gz
+*.toc
+*.xdv
+
+# Editors
+.vscode/
+.idea/
+
+# OS and temp
+*~
+*.swp
+*.tmp

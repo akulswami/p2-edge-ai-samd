@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: "Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices: Controlled Experimental Evidence on a Shared-Silicon Platform"
+message: "If you use this repository, please cite the associated manuscript."
+type: software
+authors:
+  - family-names: "Swami"
+    given-names: "Akul Mallayya"
+    orcid: "https://orcid.org/0009-0003-9549-5543"
+repository-code: "https://github.com/akulswami/p2-edge-ai-samd"
+license: "NOASSERTION"
+preferred-citation:
+  type: manuscript
+  authors:
+    - family-names: "Swami"
+      given-names: "Akul Mallayya"
+      orcid: "https://orcid.org/0009-0003-9549-5543"
+  title: "Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices: Controlled Experimental Evidence on a Shared-Silicon Platform"
+  year: 2026
+  status: "unpublished manuscript"
