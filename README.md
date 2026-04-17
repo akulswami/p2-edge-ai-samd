@@ -1,28 +1,43 @@
 # Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices
 
-This repository contains code, experiment artifacts, and manuscript sources for a study on timing safety in edge AI inference pipelines for medical device relevant workloads.
+This repository contains the experiment code, result artifacts, and manuscript sources for the study:
 
-## Overview
+“Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices: Controlled Experimental Evidence on a Shared-Silicon Platform”
 
-This work evaluates whether output stability and timing reliability remain coupled under deployment load. Using the same NVIDIA Jetson Orin Nano Super hardware, the study compares two execution paths for the same MobileNetV2 model:
+---
 
-- GPU path using TensorRT FP16
-- CPU path using ONNX Runtime FP32
+## Scope
 
-The central result is that both paths preserve output stability under the tested stress conditions, while only one path preserves timing within the target cycle budget. This demonstrates that accuracy style validation alone can miss timing unsafe behavior under foreseeable deployment load.
+This work evaluates whether output stability and timing reliability remain coupled under deployment load in edge AI inference systems.
 
-## Main finding
+Two execution paths are evaluated on the same hardware:
 
-Across 107,500 verified inference activations:
+- GPU path: TensorRT FP16
+- CPU path: ONNX Runtime FP32
 
-- Both execution paths maintained `STER = 0.0000`
-- The GPU path remained below 11 ms latency under all tested conditions
-- The CPU path degraded to 104.0 ms mean latency and 165.1 ms P99 under combined load
-- The CPU path exceeded the nominal 10 Hz cycle budget of 100 ms by 65 percent under combined load
+The study demonstrates that output correctness can be preserved while timing constraints are violated under realistic load.
 
-This supports the paper’s core claim that output correctness and timing reliability are independent safety properties that should be evaluated jointly.
+---
 
-## Repository contents
+## Key Result
+
+Under combined system load:
+
+- Both execution paths maintain:
+  - STER = 0.0000 (no output distribution deviation beyond threshold)
+- GPU path:
+  - Mean latency ≈ 10.6 ms
+  - P99 latency ≈ 10.9 ms
+- CPU path:
+  - Mean latency ≈ 104.0 ms
+  - P99 latency ≈ 165.1 ms
+  - Exceeds 10 Hz (100 ms) cycle budget by 65%
+
+This establishes that output stability and timing reliability are independent properties and must be verified jointly.
+
+---
+
+## Repository Structure
 
 p2-edge-ai-samd/
 ├── jetson/
@@ -36,62 +51,116 @@ p2-edge-ai-samd/
 │   ├── e6_jetson_cpu.py
 │   └── results/
 ├── coral/
-│   └── ...
 ├── paper/
 │   ├── p2_arxiv.tex
 │   ├── p2_ieee_esl_final.tex
-│   ├── p2_ieee_esl_final.pdf
+│   ├── figures/
 │   └── ...
 └── README.md
 
+---
+
+## Mapping to Manuscript
+
+| Paper Section | Experiment | Script |
+|--------------|------------|--------|
+| Section 5.1 | E0 | jetson/e0_jetson.py |
+| Section 5.2 | E1 | jetson/e1_jetson.py |
+| Section 5.3 | E2–E4 | jetson/e2_jetson.py, e3_jetson.py, e4_jetson.py |
+| Section 5.4 | E5 | jetson/e5_jetson.py |
+| Section 5.5 | E6 | jetson/e6_jetson_cpu.py |
+
+---
+
+## Reproducing the Key Result (E5)
+
+The central claim is that output stability is preserved while timing degrades under combined load.
+
+### Step 1 — Run GPU path
+
+python3 jetson/e5_jetson.py --mode gpu
+
+### Step 2 — Run CPU path
+
+python3 jetson/e6_jetson_cpu.py
+
+### Step 3 — Apply combined load
+
+- CPU: stress-ng at 75%
+- Memory: 50% allocation
+- BLE: 4 connections
+- Disk: fio write workload
+
+### Step 4 — Expected outcome
+
+- GPU latency remains ≈ 10.6 ms
+- CPU latency degrades to ≈ 104 ms mean, ≈ 165 ms P99
+- STER = 0 for both paths
+
+---
+
 ## Experiments
 
-| ID | Description | Scope |
-|---|---|---|
-| E0 | Baseline zero load characterization | GPU and CPU |
-| E1 | CPU contention sweep | GPU and CPU |
-| E2 | Memory pressure | GPU |
-| E3 | GPU co tenancy | GPU |
-| E4 | Network I/O and BLE stress | GPU |
-| E5 | Combined realistic load | GPU and CPU |
-| E6 | CPU only contention characterization | CPU |
+| ID | Description |
+|----|------------|
+| E0 | Baseline zero-load characterization |
+| E1 | CPU contention sweep |
+| E2 | Memory pressure (GPU path) |
+| E3 | GPU co-tenancy |
+| E4 | Network I/O stress (BLE + WiFi) |
+| E5 | Combined realistic load |
+| E6 | CPU-only contention characterization |
 
-## Key metric
+---
 
-STER, or Safety Threshold Exceedance Rate, is defined in the manuscript as a per inference output stability metric relative to the zero load reference output.
+## Key Metric
 
-It is used here to distinguish timing degradation from output distribution instability.
+STER (Safety Threshold Exceedance Rate):
 
-## Reproducibility
+- Measures deviation in output distribution relative to baseline
+- Detects subthreshold changes not captured by accuracy metrics
+- Defined in manuscript Section 3
 
-This repository preserves the experiment scripts and result artifacts used in the manuscript. Reproducing the full study requires:
+---
 
-- NVIDIA Jetson Orin Nano Super class hardware
-- TensorRT and ONNX Runtime configured for the tested execution paths
-- The same or equivalent image dataset preparation flow
-- Stress generation for CPU, memory, network I/O, and storage I/O
+## Environment
 
-Some scripts in this repository contain machine specific paths from the original experiment environment. These should be adapted to the local setup before rerunning experiments.
+- Hardware: NVIDIA Jetson Orin Nano Super
+- OS: JetPack 6
+- Python: 3.10+
+- TensorRT (GPU path)
+- ONNX Runtime (CPU path)
 
-## Building the manuscript
+---
+
+## Version
+
+This repository version corresponds to IEEE ESL submission (April 2026).
+
+Tag:
+v1.0-esl-submission
+
+---
+
+## Building the Manuscript
 
 cd paper
 pdflatex -interaction=nonstopmode p2_arxiv.tex
 pdflatex -interaction=nonstopmode p2_arxiv.tex
 
+---
+
 ## Citation
 
-Until the preprint is publicly posted, cite this work as:
+If using this work:
 
-A. M. Swami, “Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices: Controlled Experimental Evidence on a Shared-Silicon Platform,” unpublished manuscript, 2026.
+A. M. Swami,
+“Architectural Isolation as a Timing Safety Primitive for Edge AI Medical Devices,”
+arXiv preprint, 2026.
 
-After the arXiv version is live, replace the citation above with the arXiv identifier.
-
-## Author
-
-Akul Mallayya Swami  
-ORCID: 0009-0003-9549-5543
+---
 
 ## Notes
 
-This repository is intended to support manuscript transparency and reproducibility. It does not make any clinical claim or deployment recommendation beyond the experimental scope described in the paper.
+This repository supports experimental transparency and reproducibility.
+No clinical or deployment claims are made beyond the scope of the controlled experiments described.
