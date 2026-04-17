@@ -35,10 +35,13 @@ Under combined system load:
 
 This establishes that output stability and timing reliability are independent properties and must be verified jointly.
 
+Failure to detect this divergence can result in deployment of systems that are functionally correct but temporally unsafe.
+
 ---
 
 ## Repository Structure
 
+```
 p2-edge-ai-samd/
 ├── jetson/
 │   ├── e0_jetson.py
@@ -57,6 +60,7 @@ p2-edge-ai-samd/
 │   ├── figures/
 │   └── ...
 └── README.md
+```
 
 ---
 
@@ -78,9 +82,13 @@ The central claim is that output stability is preserved while timing degrades un
 
 ### Step 1 — Run GPU path
 
+Run from repository root:
+
 python3 jetson/e5_jetson.py --mode gpu
 
 ### Step 2 — Run CPU path
+
+Run from repository root:
 
 python3 jetson/e6_jetson_cpu.py
 
